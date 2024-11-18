@@ -1,0 +1,4 @@
+__pycache__
+_output
+_saved_configs
+.snakemake
