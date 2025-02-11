@@ -1,31 +1,51 @@
-from subprocess import run
 
-from datadispatch.access import select
+import datadispatch
+import mftools
 
-from scripts import *
-from scripts import A_CellSeg
+import subprocess as sub
+from datetime import datetime
+import os,sys
+from string import Template
 
-#=-=#=-=#=- Logging Run -=#=-=#=-=#=-=#=-=#=-=#=-=#=-=#=-=#=-=#=-=#
+import datadispatch.access as db
+from datadispatch.orm import ParamLog
+
+from scripts import _1_
+from scripts import _2_
+from scripts.meta import *
+
+_output = f'{os.getenv("HOME")}/pipeline/_output'
+
+###############################################################################
+#===================== Hashing config and Logging  ===========================#
+###############################################################################
 
 # ----- Log Git Address ----- # 
-# TODO:
+# TODO: Add the other major supporting libraries (mftools) + safety check
 # safety check: make sure that the git branch is up to date so that we can 
 # cross reference our records with the code it was run on
+if not branch_up_to_date():
+    pass
+    #raise RuntimeError("The branch is not up to date; run 'git status'")
+commit = get_commit_hash('TODO: this parameter does nothing')
 
-# ----- Enter in Database ----- # 
-# TODO:
-# safety check: make sure that the git branch is up to date so that we can 
-# cross reference our records with the code it was run on
-
+# ----- Copy snakemake file ----- # 
+datetime_str = str(datetime.now()).\
+                split('.')[0].\
+                replace(' ', '_').\
+                replace('-', '.')
+sub.run(['cp', 'snakefood.ini', f'{_output}/.leftovers/{datetime_str}.ini'])
 
 
 #=-=#=-=#=- Precalculating Hashes -=#=-=#=-=#=-=#=-=#=-=#=-=#=-=#=-=#=-=#=-=#
 
 # ----- Generate "Config Hashes" ----- # 
-hashes = {}
+hashes:dict[str, any] = {}
 all_config = order_snakefood()
+check_RunInfo(all_config)
+
 for stepname in all_config.sections():
-    h = hash_parameters(
+    h = hash_parameters(                # in scripts.meta
         stepname
     )  
     hashes[stepname] = h
@@ -33,73 +53,168 @@ for stepname in all_config.sections():
 
 # ----- Get experiment Names and IDs ----- # 
 where = all_config['Run Info']['where'].strip('"')
-results = select('Experiment', where=where)
+results = db.select('Experiment', where=where)
 
 ids = {res.meta.MERFISHExperimentID: res.name for res in results}
 print(ids)
 hashes['EXPS'] = ids
 
 # ----- Generate "Aggregate Hash" ----- # 
-# this hash exists to represent the combonation of all experiments selected by the where statement
+# This hash exists to represent the combonation of all experiments selected by the where statement
 exp_names = '$'.join(sorted(ids.values()))
-hashes['AGGREGATE'] = hash_strli(exp_names)
+hashes['AGGREGATE'] = hash_strli(exp_names) # in scripts.meta
 
-#=-=#=-=#=- Generating Targets -=#=-=#=-=#=-=#=-=#=-=#=-=#=-=#=-=#=-=#=-=#
-# A1 Cellpose: 
-# Resegmentation of raw imaging data using cellpose:
-A1_Cellpose_out = '{id}_{A1}.checkpoint'.format(**{'id': '{eid}', 'A1':hashes['A1_Cellpose']})
-A1_Cellpose_target = [
-    '{id}_{A1}.checkpoint'.format(**{'id': id, 'A1':hashes['A1_Cellpose']})
-    for id in ids.keys()
-]
+# ----- Add Misc Hashes ----- # 
+hashes['COMMIT'] = commit
+hashes['SNAKEMAKE_CALL'] = datetime_str
+hashes['DESCRIPTION'] = all_config['Run Info']['description'].strip('"')
 
-# 
+#=-=#=-=#=- Enter all info in Database -=#=-=#=-=#=-=#=-=#=-=#=-=#=-=#=-=#=-=#
+log_parameters(hashes, all_config) # in scripts.meta
 
 
 ###############################################################################
-#=============================================================================#
+#======================== Generating Targets  ================================#
+###############################################################################
+# NOTE: General pattern is 
+### ex.) step description -> Variable example ###
+# 1.) Define for step -> A1_T:Template
+# 2.) Fill hashes (Template.safe_substitute) -> A1_H:String
+# 3.) Fill formats 
+# 4.) Full wildcards (String.format) -> A1_{StepName}_targets:String
+
+# for easy alteration; base_T = base template
+base_T = '{_o}/{_step}/{_file}'
+
+# --- A1 Segmentation:  ------------------------------------------------------- 
+# Resegmentation of raw imaging data using cellpose and saving resulting cell
+# by gene table in the form of a scanpy H5 AnnData object (.h5ad)
+t = {
+    '_o': _output,
+    '_step': 'A1_Segmentation',
+    '_file':'${exp_id}_${a11}.${form}',
+}
+h = {
+    'a11':hashes['A11_Cellpose']
+}
+w = ('exp_id', [id for id in ids.keys()])
+
+A11_Segmentation_target, A11_target = assemble_target(
+    template=t,
+    hashes=h,
+    format=S_CHECKPOINT,
+    wildcards=w
+)
+A12_SaveRawScanpy_target, A12_target = assemble_target(
+    template=t,
+    hashes=h,
+    format=S_H5AD,
+    wildcards=w
+)   
+
+
+# --- A2 Annotation:  ---------------------------------------------------------
+# Automated cell label transfer from reference data
+t = {
+    '_o': _output,
+    '_step': 'A2_Annotation',
+    '_file':'${agg}_${a11}_${a21}.${form}',
+}
+h = {
+    'a11':hashes['A11_Cellpose'],
+    'a21':hashes['A21_HarmAnnotation'],
+    'agg':hashes['AGGREGATE']
+}
+
+A21_Annotation_target, A21_target = assemble_target(
+    template=t,
+    hashes=h,
+    format=S_H5AD,
+    wildcards=()
+)
+
+
+print('A11_Segmentation_target:' ,A11_Segmentation_target)
+print('A11_target:', A11_target)
+print('A12_SaveRawScanpy_target:', A12_SaveRawScanpy_target)
+print('A12_target:', A12_target)
+print('A21_Annotation_target:', A21_Annotation_target)
+print('A21_target:', A21_target)
+
+###############################################################################
+#=========================== Snakemake Rules  ================================#
 ###############################################################################
 
+# rule all:
+#     input:
+#         A11_Segmentation_target,
+#         A12_SaveRawScanpy_target,
+#         A21_Annotation_target
 
-rule A1_Cellpose:
+
+rule A11_Segmentation:
     input:
-        A1_Cellpose_target
-# rule _cook_snakefood:
-#     input: 
-#     output: 
-#     run:
-        
-# rule example:
-#     input: 
-#         # Example:
-#         # {section_name1}_{section_name2}_...{}.something
-#     output: 
-#         # {section_name1}_{section_name2}_...{}.something
+        A11_Segmentation_target
+    run:
+        print('DONE:', A11_Segmentation_target)
+        print('updating database parameter log with success...')
+        mark_success(datetime_str)
 
-#     run: 
-#         # subprocess(script include all parameters) -> print out and capture any output not saved to file
-#         # do merbot interaction here
 
-# rule A_test1:
-#     # input: 
-#     output: 
-#     run: 
+rule A12_SaveRawScanpy:
+    input:
+        A12_SaveRawScanpy_target
+    run:
+        print(A12_SaveRawScanpy_target)
+        print('updating database parameter log with success...')
+        mark_success(datetime_str)
 
-# rule B_test2:
-#     input: 
-#     output: 
-#     run: 
 
-# rule C_test3:
-#     input: 
-#     output: 
-#     run: 
 
-rule A1:
+rule A21_Annotation:
+    input:
+        A21_Annotation_target
+    run:
+        print('updating database parameter log with success...')
+        mark_success(datetime_str)
+
+
+###############################################################################
+# ---- Behind the scenes: rules to produce targets, call at your own risk --- #
+###############################################################################
+
+rule A11:
     output:
-        A1_Cellpose_out
-
+        A11_target
     threads:64
     run:
-        name=ids[wildcards.eid]
-        A_CellSeg.Cellpose(name, output)
+        name=ids[wildcards.exp_id]
+        print('NAME HERE', name)
+        _1_._1_Cellpose(name, input, output, hashes, commit)
+
+rule A12:
+    input:
+        A11_target
+    output:
+        A12_target
+    run:
+        name=ids[wildcards.exp_id]
+        print('NAME HERE', name)
+        _1_._2_SaveRawScanpy(name, input, output, hashes, commit)
+
+
+rule A21:
+    input:
+        A12_SaveRawScanpy_target
+    output:
+        A21_target
+    run:
+        _2_._1_Annotation(input, output, hashes, commit)
+
+
+# rule B1:
+#     input:
+#         *A12_SaveRawScanpy_target
+#     run:
+#         #some script here
+#         print('reached')
