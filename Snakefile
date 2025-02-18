@@ -1,18 +1,19 @@
+import warnings
+with warnings.catch_warnings(action="ignore"): 
+    import datadispatch
+    import mftools
 
-import datadispatch
-import mftools
+    import subprocess as sub
+    from datetime import datetime
+    import os,sys
+    from string import Template
 
-import subprocess as sub
-from datetime import datetime
-import os,sys
-from string import Template
+    import datadispatch.access as db
+    from datadispatch.orm import ParamLog
 
-import datadispatch.access as db
-from datadispatch.orm import ParamLog
-
-from scripts import _1_
-from scripts import _2_
-from scripts.meta import *
+    from scripts import _1_
+    from scripts import _2_
+    from scripts.meta import *
 
 _output = f'{os.getenv("HOME")}/pipeline/_output'
 
@@ -140,7 +141,6 @@ print('A12_SaveRawScanpy_target:', A12_SaveRawScanpy_target)
 print('A12_target:', A12_target)
 print('A21_Annotation_target:', A21_Annotation_target)
 print('A21_target:', A21_target)
-
 ###############################################################################
 #=========================== Snakemake Rules  ================================#
 ###############################################################################
@@ -189,7 +189,7 @@ rule A11:
     threads:64
     run:
         name=ids[wildcards.exp_id]
-        print('NAME HERE', name)
+        print('NAME HERE', name, 'Output', output)
         _1_._1_Cellpose(name, input, output, hashes, commit)
 
 rule A12:
@@ -209,7 +209,7 @@ rule A21:
     output:
         A21_target
     run:
-        _2_._1_Annotation(input, output, hashes, commit)
+        _2_._1_HarmAnnotation(input, output)
 
 
 # rule B1:

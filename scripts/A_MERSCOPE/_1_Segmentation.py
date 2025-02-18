@@ -61,7 +61,7 @@ def _1_Cellpose(
 
     # Script params
     ZSLICE = int(cpconf['z_slice'])
-    CHANNEL = cpconf['channel']
+    CHANNEL = cpconf['channel'].split(',')
     MODEL= ""
     MODEL_PATH = '/home/eboone/CellSegmentation/cp_models/CP_20240227_000004_staged'
     ALT_SAVE = cpconf['alt_path']
@@ -120,34 +120,38 @@ def _1_Cellpose(
     Path(e.files['cellpose']).parent.mkdir(parents=True, exist_ok=True)
     for i, fov in enumerate(TEST_FOVS):
         fig, ax = plt.subplots(1, 1)
-        fov_show(seg=e.seg, imgs=e.imgs, fov=fov, show=False, ax=ax)
+        fov_show(seg=e.seg, imgs=e.imgs, fov=fov, show=False, ax=ax, plot_transcripts=True)
         # TODO: include implementation to create the qc directory if not exist
         fig.savefig(f"{e.files['cellpose']}/testseg_{fov}")
 
     from datetime import datetime
     print("start metadata:", datetime.now())
     # either load or create meatadata, then save if not already
-    metadata = e.seg.metadata
+    metadata:pd.DataFrame = e.seg.metadata
+    if 'region' not in metadata.columns: # TODO: move this into the logic of 'create_metadata'
+        old_metadata = pd.read_csv(Path(e.files['output']) / 'cell_metadata.csv')
+        metadata = metadata.join(old_metadata['region'])
     e.save_cell_metadata(metadata)
     print("end metadata:", datetime.now())
 
 
     # load barcodes, assign to cells, save to disk
     print("start barcodes:", datetime.now())
-    barcodes = e.load_barcode_table()
-    assign_to_cells(barcodes, e.seg)
-    link_cell_ids(barcodes, e.seg.linked_cells)
-    e.save_barcode_table(barcodes)
+    # TODO: The fundimental issue here is that we explicitly want to ask for the cannontical barcodes
+    # that come off the machine, then modify. We do not have the ability to do that here easily
+    cannon_barcodes = e.load_barcode_table()
+    new_barcodes = assign_to_cells(cannon_barcodes, e.seg, e.settings['image_dimensions'][0])
+    link_cell_ids(new_barcodes, e.seg.linked_cells)
+    e.save_barcode_table(new_barcodes)
     print("end barcodes:", datetime.now())
 
-    barcodes = e.load_barcode_table()
-    cbgtab = create_cell_by_gene_table(barcodes)
+    cbgtab = create_cell_by_gene_table(new_barcodes)
     cbgtab.index = cbgtab.index.astype(int)
     e.save_cell_by_gene_table(cbgtab)
     # TODO: Create and write the scanpy object somewhere.
 
-    with open(outfile, 'w') as f:
-        f.write('FINISHED: ', datetime.now(), '\n\n')
+    with open(str(outfile), 'w') as f:
+        f.write(F"FINISHED: {datetime.now()}\n\n")
         
         for k, p in PATHS.items():
             f.write(f'{k}: {p}')
@@ -166,8 +170,8 @@ def _2_SaveRawScanpy(
     
     res = result[0]
 
-    cpconf = order_snakefood('A1_Cellpose')
-    alt_save = cpconf['alt_save']
+    cpconf = order_snakefood('A11_Cellpose')
+    alt_save = cpconf['alt_path']
     if alt_save:
         alt_paths = {'cellpose': Path(alt_save), 'masks': Path(alt_save) / 'masks'}
     else:
@@ -192,5 +196,4 @@ def _2_SaveRawScanpy(
 
     # -------------------------- Save object -------------------------------- #
 
-    mdata.write(Path(str(output)))
-
+    mdata.safe_write(Path(str(output)))
