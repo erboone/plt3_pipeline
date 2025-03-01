@@ -1,10 +1,10 @@
-#!/usr/bin/env python
-# coding: utf-8
-
 import os, sys
+import json
 from configparser import ConfigParser
 from pathlib import Path
 from itertools import chain
+import warnings
+
 
 import numpy as np
 from skimage.measure import regionprops # This has been moved to plotting
@@ -28,7 +28,7 @@ from datadispatch.orm import Experiment
 from ..meta import order_snakefood
 from ..meta import OUTPUT
 
-def _1_Cellpose(
+def A1_Cellpose(
         exp_name,
         input,
         outfile,
@@ -113,14 +113,16 @@ def _1_Cellpose(
             )
     e = experiment
 
+    # TODO: Load parameters into class easily
+    # with open(f"{e.files['settings']}/microscope_parameters.json") as f:
+    #     microscope_params = json.load(f)
+
     fig:Figure; axs:list[list[Axes]]
     # fig, axs = plt.subplots(2, len(TEST_FOVS))
-
-    # TODO: come back to this; implement plotting and saving a couple of test segmentations
-    Path(e.files['cellpose']).parent.mkdir(parents=True, exist_ok=True)
+    
     for i, fov in enumerate(TEST_FOVS):
         fig, ax = plt.subplots(1, 1)
-        fov_show(seg=e.seg, imgs=e.imgs, fov=fov, show=False, ax=ax, plot_transcripts=True)
+        fov_show(seg=e.seg, imgs=e.imgs, fov=fov, show=False, ax=ax)
         # TODO: include implementation to create the qc directory if not exist
         fig.savefig(f"{e.files['cellpose']}/testseg_{fov}")
 
@@ -130,10 +132,10 @@ def _1_Cellpose(
     metadata:pd.DataFrame = e.seg.metadata
     if 'region' not in metadata.columns: # TODO: move this into the logic of 'create_metadata'
         old_metadata = pd.read_csv(Path(e.files['output']) / 'cell_metadata.csv')
-        metadata = metadata.join(old_metadata['region'])
+        fov_to_reg = old_metadata['fov', 'region'].reset_index(drop=True).reindex('fov').drop_duplicates()
+        metadata = metadata.join(fov_to_reg, on='fov')
     e.save_cell_metadata(metadata)
     print("end metadata:", datetime.now())
-
 
     # load barcodes, assign to cells, save to disk
     print("start barcodes:", datetime.now())
@@ -141,6 +143,8 @@ def _1_Cellpose(
     # that come off the machine, then modify. We do not have the ability to do that here easily
     cannon_barcodes = e.load_barcode_table()
     new_barcodes = assign_to_cells(cannon_barcodes, e.seg, e.settings['image_dimensions'][0])
+                                #    flip_x=microscope_params['flip_horizontal'],
+                                #    flip_y=microscope_params['flip_vertical'])
     link_cell_ids(new_barcodes, e.seg.linked_cells)
     e.save_barcode_table(new_barcodes)
     print("end barcodes:", datetime.now())
@@ -150,50 +154,19 @@ def _1_Cellpose(
     e.save_cell_by_gene_table(cbgtab)
     # TODO: Create and write the scanpy object somewhere.
 
+    # Replot test FOV's with transcripts assigned
+    for i, fov in enumerate(TEST_FOVS):
+        fig, ax = plt.subplots(1, 1)
+        fov_show(seg=e.seg, imgs=e.imgs, fov=fov, show=False, ax=ax, plot_transcripts=True,
+                 output=MerfishAnalysis(e.files['cellpose']))
+        # TODO: include implementation to create the qc directory if not exist
+        fig.savefig(f"{e.files['cellpose']}/testseg_{fov}")
+    
     with open(str(outfile), 'w') as f:
         f.write(F"FINISHED: {datetime.now()}\n\n")
         
         for k, p in PATHS.items():
             f.write(f'{k}: {p}')
 
-def _2_SaveRawScanpy(
-        exp_name, 
-        input, 
-        output, 
-        hashes,
-        commit):
-    # -------------------- Load and create bare scanpy object --------------- #
-    EXPERIMENT_NAME = exp_name
-    result = select('Experiment', where=f"Experiment.name == '{EXPERIMENT_NAME}'")
-    if len(result) != 1:
-        raise RuntimeError('Experiment search critera did not find unique entry.') 
-    
-    res = result[0]
-
-    cpconf = order_snakefood('A11_Cellpose')
-    alt_save = cpconf['alt_path']
-    if alt_save:
-        alt_paths = {'cellpose': Path(alt_save), 'masks': Path(alt_save) / 'masks'}
-    else:
-        alt_paths = {}
-
-    e = MerscopeExperiment(res.root.path, res.name, alt_paths=alt_paths)
-
-    mdata = e.create_scanpy_object()
-    # ------------------------ Decorate object ------------------------------ #
-
-    mdata.log = ('step_name', '_1_Segmentation')
-    mdata.log = ('step_hash', hashes['A11_Cellpose']) 
-    # ^^^ This is unusual, normally try to only use a steps hash in it's own 
-    # step. However, this object does not exist in the Cellpose step sooo...
-    mdata.log = ('function', '_2_SaveRawScanpy')
-    mdata.log = ('commit_id', commit)
-    mdata.log = ('normalization', None)
 
 
-    mdata.obs[md.BATCH_KEY] = pd.Series(res.meta.BICANExperimentID)
-    mdata.obs[md.CTYPE_KEY] = pd.Series(None)
-
-    # -------------------------- Save object -------------------------------- #
-
-    mdata.safe_write(Path(str(output)))
