@@ -4,7 +4,8 @@ from configparser import ConfigParser
 from pathlib import Path
 from itertools import chain
 import warnings
-
+from glob import glob
+import re
 
 import numpy as np
 from skimage.measure import regionprops # This has been moved to plotting
@@ -38,7 +39,7 @@ def A1_Cellpose(
         ) -> None:
     # ----- Load Config ----- #
     # TODO: change this to work with config files generated from merbot
-    cpconf = order_snakefood('A11_Cellpose')
+    cpconf = order_snakefood('A1_Cellpose')
 
     # ----- Parse Args ------ #
     # TODO: upgrade this
@@ -95,7 +96,7 @@ def A1_Cellpose(
     result = select('Experiment', where=f"Experiment.name == '{EXPERIMENT_NAME}'")
 
     if len(result) != 1:
-        raise RuntimeError('Experiment search critera did not find unique entry.') 
+        warnings.warn('Experiment search critera did not find unique entry.') 
 
 
     
@@ -131,8 +132,15 @@ def A1_Cellpose(
     # either load or create meatadata, then save if not already
     metadata:pd.DataFrame = e.seg.metadata
     if 'region' not in metadata.columns: # TODO: move this into the logic of 'create_metadata'
-        old_metadata = pd.read_csv(Path(e.files['output']) / 'cell_metadata.csv')
-        fov_to_reg = old_metadata['fov', 'region'].reset_index(drop=True).reindex('fov').drop_duplicates()
+        trx_paths = glob(str(Path(e.files['output']) / '*region*' / 'detected_transcripts.csv'))
+        transcripts = []
+        for p in trx_paths:
+            reg = re.search('region_[A-z0-9]*', p)[0].split('_')[-1]
+            df = pd.read_csv(p)
+            df['region'] = reg
+            transcripts.append(df)
+        old_metadata = pd.concat(transcripts).drop_duplicates(subset='fov')
+        fov_to_reg = old_metadata[['fov', 'region']].set_index('fov')
         metadata = metadata.join(fov_to_reg, on='fov')
     e.save_cell_metadata(metadata)
     print("end metadata:", datetime.now())

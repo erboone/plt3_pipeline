@@ -26,11 +26,12 @@ def _check_sanitized(refdata:an):
         raise KeyError("Make sure that the reference data object being loaded has been sanitized.") from e
 
 
-def _1_HarmAnnotation(input, output):
-    STEPNAME = 'A21_HarmAnnotation'
+def A4_HarmAnnotation(input, output, hashes, commit):
+    STEPNAME = 'A4_HarmAnnotation'
     anconf = order_snakefood(STEPNAME)
-    MIN_COUNTS = int(anconf['min_counts'])
-    MIN_GENES = int(anconf['min_genes'])
+    filtconf = order_snakefood('Filter')
+    MIN_COUNTS = int(filtconf['min_counts'])
+    MIN_GENES = int(filtconf['min_genes'])
     # QC_PATH = Path()
     try:
         REMOVE_DOUBLETS = eval(anconf['remove_doublets'])

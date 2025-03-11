@@ -26,7 +26,7 @@ ERR_MYSTERY_CONFIG_INPUT = "Make sure all 'Run Info' values are filled, with str
 def order_snakefood(
         section_key:str=None, 
         alt_name:str=None,
-        default:bool=False) -> dict | ConfigParser:
+        default:bool=False) -> dict:
     
     config = ConfigParser()
     if default:
