@@ -179,9 +179,25 @@ t = {
 h = {"b2": hashes["Filter"]}
 w = ("exp_id", [id for id in ids.keys()])
 
-B3_PostprocQC_target, B3_target = assemble_target(
+BQC1_PostprocQC_target, BQC1_target = assemble_target(
     template=t, hashes=h, format=S_IMAGE, wildcards=w
 )
+
+t = {
+    "_o": _output,
+    "_step": "B3_Annotation",
+    "_file": "${agg}.${b2}.${b3}.${form}",
+}
+h = {
+    "b2": hashes["Filter"],
+    "b3": hashes["A4_Annotation"],
+    "agg": hashes["AGGREGATE"]
+}
+
+A4_Annotation_target, A4_target = assemble_target(
+    template=t, hashes=h, format=S_H5AD, wildcards=()
+)
+
 
 print()
 print("-" * 80)
@@ -199,8 +215,11 @@ print("B1_SaveRawScanpy_target:", B1_SaveRawScanpy_target)
 print("B1_target:", B1_target)
 print("B2_Filterin_target:", B2_Filtering_target)
 print("B2_target:", B2_target)
-print("B3_PostprocQC_target:", B3_PostprocQC_target)
+print("BQC1_PostprocQC_target:", BQC1_PostprocQC_target)
+print("BQC1_target:", BQC1_target)
+print("B3_Annotation_target:", B3_Annotation_target)
 print("B3_target:", B3_target)
+
 print()
 print("-" * 80)
 print()
@@ -321,9 +340,16 @@ rule B2_Filtering:
         mark_success(datetime_str)
 
 
-rule B3_PostprocQC:
+rule BQC1_PostprocQC:
     input:
-        B3_PostprocQC_target,
+        BQC1_PostprocQC_target
+    run:
+        print("updating database parameter log with success...")
+        mark_success(datetime_str)
+
+rule B3_Annotation:
+    input:
+        BQC1_PostprocQC_target
     run:
         print("updating database parameter log with success...")
         mark_success(datetime_str)
@@ -352,11 +378,13 @@ rule B2:
         _2_.B2_Preprocessing(name, input, output, hashes, commit)
 
 
-rule B3:
+rule BQC1:
     input:
         B2_target,
     output:
-        B3_target,
+        BQC1_target,
     run:
         name = ids[wildcards.exp_id]
         _2_.QC_1_postsegqc(input, output, hashes, commit)
+
+rule B3:
