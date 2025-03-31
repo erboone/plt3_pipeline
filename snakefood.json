@@ -8,8 +8,8 @@
   "A1 Cellpose": {
     "z_slice": 3,
     "channel": ["DAPI", "PolyT"],
-    "model_path": "", 
-    "alt_path": "",
+    "model_path": null, 
+    "alt_path": null,
     "test_fovs": [100, 300, 450, 600]
   },
   "A2_SaveRawScanpy": null,
