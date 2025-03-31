@@ -1,1 +1,7 @@
-
+{
+  "Run Info": {
+    "description": "Testing the segmentation of Ultra data",
+    "where_description": "Targeted selection of Ultra data",
+    "where": "Experiment.name == '202501311118_BICANTraining_VMSC32010'",
+    "qc_path": "_output/quality_control/"
+  },
