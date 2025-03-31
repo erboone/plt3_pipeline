@@ -5,3 +5,25 @@
     "where": "Experiment.name == '202501311118_BICANTraining_VMSC32010'",
     "qc_path": "_output/quality_control/"
   },
+  "A1 Cellpose": {
+    "z_slice": 3,
+    "channel": ["DAPI", "PolyT"],
+    "model_path": "", 
+    "alt_path": "",
+    "test_fovs": [100, 300, 450, 600]
+  },
+  "A2_SaveRawScanpy": null,
+  "B1_SaveRawScanpy": null,
+  "Filter": {
+    "remove_doublets": false,
+    "min_counts": 5,
+    "min_genes": 3
+  },
+  "A4_HarmAnnotation": {
+    "ref_path": ["/mnt/merfish18/BICAN/Reference_Data/Linnarsson/regions/CerebralCortex1.h5ad","/mnt/merfish18/BICAN/Reference_Data/Linnarsson/regions/BasalForebrain.h5ad"],
+    "leiden_res": 0.3
+  },
+  "QC1_postsegqc": {
+    "bulkref_path": "/data/erboone/BICANReference/gene_reads_brain_cortex.gct"
+  }
+}
