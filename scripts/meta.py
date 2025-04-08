@@ -2,6 +2,7 @@ import os
 from configparser import ConfigParser
 from datadispatch.access import update, add
 from datadispatch.orm import ParamLog
+import json
 
 # Constants
 SNAKEFOOD = '/home/erboone/pipeline/snakefood.ini'
@@ -23,25 +24,27 @@ ERR_MISSING_RUNINFO_KEY = \
     f"Every snakefood file requires a section 'Run Info' with keys {REQ_RUNINFO_VALUES} and corresponding string values. \nFound:\n{{}}"
 ERR_MYSTERY_CONFIG_INPUT = "Make sure all 'Run Info' values are filled, with strings preferably."
 
+
 def order_snakefood(
         section_key:str=None, 
         alt_name:str=None,
         default:bool=False) -> dict:
     
-    config = ConfigParser()
     if default:
-        config.read(DEFAULT_SNAKEFOOD)
+        snakefood = DEFAULT_SNAKEFOOD
     elif alt_name:
-        config.read(alt_name)
+        snakefood = alt_name
     else:
-        config.read(SNAKEFOOD)
+        snakefood = SNAKEFOOD
 
-    if not config.sections():
-        raise RuntimeError(f"config file load failed, check '{DEFAULT_SNAKEFOOD}', '{alt_name}', or '{SNAKEFOOD}'")
+    if not os.path.exists(snakefood):
+        raise RuntimeError(f"config file load failed: check '{DEFAULT_SNAKEFOOD}', '{alt_name}' or '{SNAKEFOOD}'")
     
-
+    with open(snakefood, 'r') as f:
+        config = json.load(f)
+    
     if section_key:
-        return config[section_key]
+        return config.get(section_key)
     else:
         return config
 
