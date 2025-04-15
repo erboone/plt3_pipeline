@@ -1,0 +1,40 @@
+{
+  "Run Info": {
+    "description": "Testing the segmentation of Ultra data",
+    "where_description": "Targeted selection of Ultra data",
+    "where": "Experiment.name == '202501311118_BICANTraining_VMSC32010'",
+    "qc_path": "_output/quality_control/"
+  },
+
+  "A1_Cellpose": {
+    "z_slice": 3,
+    "channel": ["DAPI", "PolyT"],
+    "model_path": null,
+    "alt_path": null,
+    "test_fovs": [150, 300, 450, 600]
+  },
+
+    "A2_SaveRawScanpy": null, 
+
+    "B1_SaveRawScanpy": null,
+
+    "Filter": {
+        "remove_doublets": false,
+        "mini_counts": 5,
+        "mini_genes": 3
+    },
+
+    "A4_HarmAnnotation": {
+        "ref_path": ["/mnt/merfish18/BICAN/Reference_Data/Linnarsson/regions/CerebralCortex1.h5ad","/mnt/merfish18/BICAN/Reference_Data/Linnarsson/regions/BasalForebrain.h5ad"],
+        "leiden_res": 0.3
+    },
+
+    "QC1_postsegqc": {
+        "bulkref_path": "/data/erboone/BICANReference/gene_reads_brain_cortex.gct"
+    }
+}
+
+
+
+
+
