@@ -141,7 +141,7 @@ h = {
     "agg": hashes["AGGREGATE"],
 }
 
-A4_Annotation_target, A4_target = assemble_target(
+A4_HarmAnnotation_target, A4_target = assemble_target(
     template=t, hashes=h, format=S_H5AD, wildcards=()
 )
 
@@ -183,19 +183,36 @@ BQC1_PostprocQC_target, BQC1_target = assemble_target(
     template=t, hashes=h, format=S_IMAGE, wildcards=w
 )
 
+# --- B Preproc:  ---------------------------------------------------------
+
 t = {
     "_o": _output,
     "_step": "B3_Annotation",
-    "_file": "${agg}.${b2}.${b3}.${form}",
+    "_file": "${exp_id}.${b2}.${b3}.${form}",
 }
 h = {
     "b2": hashes["Filter"],
-    "b3": hashes["A4_Annotation"],
+    "b3": hashes["A4_HarmAnnotation"],
     "agg": hashes["AGGREGATE"]
 }
 
-A4_Annotation_target, A4_target = assemble_target(
+B3_HarmAnnotation_target, B3_target = assemble_target(
     template=t, hashes=h, format=S_H5AD, wildcards=()
+)
+
+t = {
+    "_o": _output,
+    "_step": "B3_Annotation",
+    "_file": "${exp_id}.${b2}.${b3}/stats.${form}",
+}
+h = {"b2": hashes["Filter"],
+     "b3": hashes["A4_HarmAnnotation"],
+     "agg": hashes["AGGREGATE"]
+     }
+w = ("exp_id", [id for id in ids.keys()])
+
+BQC2_PostannoQC_target, BQC2_target = assemble_target(
+    template=t, hashes=h, format=S_CSV, wildcards=w
 )
 
 
@@ -208,7 +225,7 @@ print("A2_SaveRawScanpy_target:", A2_SaveRawScanpy_target)
 print("A2_target:", A2_target)
 print("A3_Filtering_target:", A3_Filtering_target) 
 print("A3_target:", A3_target)
-print("A4_Annotation_target:", A4_Annotation_target)
+print("A4_HarmAnnotation_target:", A4_HarmAnnotation_target)
 print("A4_target:", A4_target)
 print()
 print("B1_SaveRawScanpy_target:", B1_SaveRawScanpy_target)
@@ -217,8 +234,10 @@ print("B2_Filterin_target:", B2_Filtering_target)
 print("B2_target:", B2_target)
 print("BQC1_PostprocQC_target:", BQC1_PostprocQC_target)
 print("BQC1_target:", BQC1_target)
-print("B3_Annotation_target:", B3_Annotation_target)
+print("B3_HarmAnnotation_target:", B3_HarmAnnotation_target)
 print("B3_target:", B3_target)
+print("BQC2_PostannoQC_target", BQC2_PostannoQC_target)
+print("BQC2_target", BQC2_target)
 
 print()
 print("-" * 80)
@@ -231,7 +250,7 @@ print()
 #     input:
 #         A1_Cellpose_target,
 #         A2_SaveRawScanpy_target,
-#         A4_Annotation_target
+#         A4_HarmAnnotation_target
 
 
 rule A1_Segmentation:
@@ -260,9 +279,9 @@ rule A3_Preproc:
         mark_success(datetime_str)
 
 
-rule A4_Annotation:
+rule A4_HarmAnnotation:
     input:
-        A4_Annotation_target,
+        A4_HarmAnnotation_target,
     run:
         print("updating database parameter log with success...")
         mark_success(datetime_str)
@@ -307,7 +326,7 @@ rule A4:
     input:
         A3_Filtering_target,
     output:
-        A4_Annotation_target,
+        A4_HarmAnnotation_target,
     run:
         _3_.A4_HarmAnnotation(input, output, hashes, commit)
 
@@ -347,13 +366,22 @@ rule BQC1_PostprocQC:
         print("updating database parameter log with success...")
         mark_success(datetime_str)
 
-rule B3_Annotation:
+rule B3_HarmAnnotation:
     input:
         BQC1_PostprocQC_target
     run:
         print("updating database parameter log with success...")
         mark_success(datetime_str)
 
+rule BQC2_PostannoQC:
+    input:
+        BQC2_PostannoQC_target
+    run:
+        print("updating database parameter log with success...")
+        mark_success(datetime_str)
+
+
+# ---- Behind the scenes: rules to produce targets, call at your own risk --- #
 
 rule B1:
     output:
@@ -388,3 +416,17 @@ rule BQC1:
         _2_.QC_1_postsegqc(input, output, hashes, commit)
 
 rule B3:
+    input:
+        B2_Filtering_target,
+    output:
+        B3_target,
+    run:
+        _3_.B3_HarmAnnotation(input, output, hashes, commit)
+
+rule BQC2:
+    input:
+        B3_target
+    output:
+        BQC2_target
+    run:
+        _3_.QC_2_postanno(input, output, hashes, commit)
