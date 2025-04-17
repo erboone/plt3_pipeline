@@ -1,6 +1,8 @@
 import warnings as warn
 from pathlib import Path
 from datetime import datetime
+import os
+
 import scanpy as sc
 import pandas as pd
 import anndata as an
@@ -9,10 +11,12 @@ import scrublet as scr
 from sklearn.neighbors import KNeighborsClassifier
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
+import seaborn as sns
 
 from datadispatch.access import select
 from mftools.scanpy_wrap import MerData as md
 from mftools.mfexperiment import MerscopeExperiment
+from mftools.plotting import celltype_corr
 
 from ..meta import order_snakefood
 from ..meta import OUTPUT
@@ -53,14 +57,18 @@ def A4_HarmAnnotation(input, output, hashes, commit):
     # MERSCOPE data
     adatas = []
     for path in input_h5ad_paths:
+        print(f'{path} Loading...')
         adata = sc.read_h5ad(path)
+        if 'counts' in adata.layers:
+            adata.X = adata.layers['counts']
         adatas.append(adata)
     merdata = sc.concat(adatas)
-    print(merdata.X.min(), merdata.X.max())
+    print("X min:max", f'{merdata.X.min()}:{merdata.X.max()}')
 
     # Reference data
     adatas = []
     for path in ref_h5ad_path:
+        print(f'{path} Loading...')
         adata = sc.read_h5ad(path)
         adatas.append(adata)
     refdata = sc.concat(adatas)
@@ -80,7 +88,7 @@ def A4_HarmAnnotation(input, output, hashes, commit):
         # print(f'\n{desig}:')
         # print(f'X is {a.X.dtype}\tmin:max::{a.X.min()}:{a.X.max()}')
         # print()
-
+        print(f'Normalizing {desig} data...')
         # Basic filtering
         ncells = a.shape[0]
         sc.pp.filter_cells(a, min_counts=MIN_COUNTS)
@@ -111,18 +119,22 @@ def A4_HarmAnnotation(input, output, hashes, commit):
         sc.pp.scale(a)
 
     print()
-    for region in merdata.obs['region'].unique():
 
+    plt.style.use('dark_background')
+    regadata = []
+    for region in merdata.obs['region'].unique():
+        
         # Combining merFISH and reference data setss
         adata = an.concat(
             [merdata[merdata.obs['region'] == region], refdata], 
             label=SOURCE_KEY, 
             keys=['merdata', 'refdata'],
             join='outer'
-        )
+        )        
 
         # Set up plots for integration QC
-        fig, axs = plt.subplots(1, 3)
+        fig, axs = plt.subplots(1, 3, figsize=(9, 3))
+        print("Preintegration UMAP")
         # Preintegration umap
         sc.pp.pca(adata)
         sc.pp.neighbors(adata, n_neighbors=30, metric='euclidean')
@@ -142,22 +154,144 @@ def A4_HarmAnnotation(input, output, hashes, commit):
         nn.fit(traindata.obsm["X_umap"], traindata.obs[CELLTYPE_KEY])
         pred = nn.predict(newadata.obsm["X_umap"])
         newadata.obs[md.CTYPE_KEY] = pred
-
-        newadata.write(OUTPATH.parent / f'{region}_{datetime.now()}.h5ad')
         
-        # Postintegration
-        sc.pp.neighbors(newadata, n_neighbors=30, metric='correlation')
-        sc.tl.umap(newadata, min_dist=0.1)
-        sc.pl.embedding(newadata, basis='umap', color='region', ax=axs[2])
-        plt.savefig('z_EMPTY.png')
+        regadata.append(newadata)
+        # # Postintegration
+        # sc.pp.neighbors(newadata, n_neighbors=30, metric='correlation')
+        # sc.tl.umap(newadata, min_dist=0.1)
+        # sc.pl.embedding(newadata, basis='umap', color='region', ax=axs[2])
+        plt.savefig(OUTPATH.parent / f'{region}_integration.png')
     
-    with open(OUTPATH, 'w') as f:
-        f.write(F"FINISHED: {datetime.now()}\n\n")
+    recomb = an.concat(regadata)
+    
+    # TODO: add Merdata meta annotation and safewrite
 
+    recomb.write(OUTPATH)
 
 B3_HarmAnnotation = A4_HarmAnnotation
 
+# TODO: delete this
+def embedding_highlight(
+        adata:sc.AnnData,
+        highlight:str | list[str],
+        basis:str,
+        color:str,
+        save:str=None,
+        scale = 1,
+        face='black',
+        dpi:int=600,
+        kwargs={},
+        na_color=(.96, .96, .96)
+        ) -> None:
     
+    sc.set_figure_params(dpi_save=dpi, frameon=False)
+    if face == 'black':
+        plt.rc('text', color='w')
+    elif face == 'white':
+        plt.rc('text', color='black')
+
+    # Mimics default size calculation of sc.pl.embedding()
+    s = scale * (100000 / adata.shape[0])
+
+    ax = sc.pl.embedding(
+        adata=adata,
+        basis=basis,
+        show=False,
+        na_color=na_color,
+        **kwargs
+    
+    )
+    ax.set_facecolor(face)
+    ax.get_figure().set_facecolor(face)
+    
+    sc.pl.embedding(
+        adata=adata[adata.obs[color].isin(highlight)],
+        basis=basis,
+        color=color,
+        ax=ax,
+        size=s,
+        save=save,
+        **kwargs
+    )
+def QC_2_postanno(
+        input,
+        output,
+        hashes,
+        commit):
+    
+    INPATH = Path(str(input))
+    OUTPATH = Path(str(output))
+
+    OUTPATH_DIR = OUTPATH.parent
+    os.makedirs(OUTPATH_DIR, exist_ok=True)
+
+    adata:an.AnnData = sc.read_h5ad(INPATH)
+
+    stat_df = pd.DataFrame(columns=['sample', 'med.trx.p.cell', 'med.genes.p.cell'])
+    stat_df.set_index('sample', inplace=True)
+
+    for reg in adata.obs['region'].unique():
+        sub_adata = adata[adata.obs['region'] == reg]
+        print('this works')
+
+        sub_adata.X = sub_adata.layers['counts']
+        obs_qc, var_qc = sc.pp.calculate_qc_metrics(sub_adata)
+        print(obs_qc, var_qc)
+        mtpc = obs_qc['total_counts'].median()
+        obs_qc.to_csv('test.csv')
+        print()
+        mgpc = obs_qc['n_genes_by_counts'].median()
+        stat_df.loc[reg] = [mtpc, mgpc]
+
+        # Top markers
+        nums = sub_adata.obs.groupby(by=md.CTYPE_KEY).size()
+        drop = nums[nums < 2].index
+        temp = sub_adata[~sub_adata.obs[md.CTYPE_KEY].isin(drop)]
+        sc.tl.rank_genes_groups(temp, groupby=md.CTYPE_KEY)
+        fig = sc.pl.rank_genes_groups_dotplot(temp, standard_scale='var', return_fig=True)
+        fig.savefig(OUTPATH_DIR / f'{reg}_1mark.png')
+        
+        # Cell counts
+        fig, ax = plt.subplots(1, 1, figsize=(5, 7))
+        a = adata.copy()# [pu_adata.obs['batch'] == batch]
+        counts_df = pd.DataFrame(a.obs.groupby(by=md.CTYPE_KEY).size(), columns=['counts']).reset_index()
+        # print(counts_df)
+        abs_values = counts_df['counts']
+        tot = sum(abs_values.astype('int'))
+        rel_values = abs_values.apply(lambda x: x/tot) * 100
+        lbls = [f' {p[0]} ({p[1]:.0f}%)' for p in zip(abs_values, rel_values)]
+        ax = sns.barplot(counts_df,
+                            x='counts', y=md.CTYPE_KEY, gap=.05, ax=ax)
+        ax.bar_label(container=ax.containers[0], labels=lbls)
+        ax.get_figure().savefig(OUTPATH_DIR / f'{reg}_2cellcts.png')
+
+
+        # spatial
+        # fig = sc.pl.embedding(sub_adata, basis='spatial', color=md.CTYPE_KEY, return_fig=True, color_map='Set1')
+        # fig.savefig(OUTPATH_DIR / f'{reg}_3spat.png')
+        highlight = ['Oligodendrocyte', 'Astrocyte', 'Microglia']
+
+        embedding_highlight(sub_adata, highlight=highlight, basis='spatial', color=md.CTYPE_KEY, save=f'{reg}_3spat.png', scale=1, face='black', dpi=1000, na_color=(.30, .30, .30))
+        plt.rcParams.update(plt.rcParamsDefault)
+
+        # umap
+        plt.style.use('dark_background')
+        fig = sc.pl.embedding(sub_adata, basis='umap', color=md.CTYPE_KEY, return_fig=True)
+        fig.savefig(OUTPATH_DIR / f'{reg}_4umap.png')
+        plt.rcParams.update(plt.rcParamsDefault)
+
+
+        # # cell-type correlations
+        # fig = celltype_corr(adata, refdata, lineage_order=LINEAGE_ORDER)
+        # fig.savefig(f'/home/erboone/HubMap_multOrg/plotdump/{g.name}_5ctcorr.png')
+
+
+    stat_df.to_csv(OUTPATH, sep='\t')
+
+
+
+
+
 if __name__ == "__main__":
     l = ['test', 'this', 'list']
     print(f"Experiment.name in '{expnames!s}'")
