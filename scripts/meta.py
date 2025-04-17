@@ -15,6 +15,7 @@ REQ_RUNINFO_VALUES = ['description', 'where_description', 'where']
 S_CHECKPOINT = 'checkpoint'
 S_H5AD = 'h5ad'
 S_IMAGE = 'png'
+S_CSV = 'csv'
 
 # Error strings
 ERR_NO_RUNINFO_SECTION = "Every snakefood file requires a section 'Run Info'"
