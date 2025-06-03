@@ -43,8 +43,8 @@ sub.run(["cp", "snakefood.ini", f"{_output}/.leftovers/{datetime_str}.ini"])
 hashes: dict[str, any] = {}
 all_config = order_snakefood()
 check_RunInfo(all_config)
-
-for stepname in all_config.sections():
+print('all_config', all_config.keys())
+for stepname in all_config.keys():
     h = hash_parameters(stepname)  # in scripts.meta
     hashes[stepname] = h
 
@@ -54,8 +54,11 @@ where = all_config["Run Info"]["where"].strip('"')
 results = db.select("Experiment", where=where)
 
 print(results)
-ids = {f"{res.BICANID}": res.name for res in results}
-print(ids)
+try:
+    ids = {f"{res.BICANID}": res.name for res in results}
+except TypeError:
+    ids = {f"temp{i}": res.name for i, res in enumerate(results)}
+print("ids:", ids)
 hashes["EXPS"] = ids
 
 # ----- Generate "Aggregate Hash" ----- #
@@ -192,8 +195,7 @@ t = {
 }
 h = {
     "b2": hashes["Filter"],
-    "b3": hashes["A4_HarmAnnotation"],
-    "agg": hashes["AGGREGATE"]
+    "b3": hashes["A4_HarmAnnotation"]
 }
 
 B3_HarmAnnotation_target, B3_target = assemble_target(
@@ -368,7 +370,7 @@ rule BQC1_PostprocQC:
 
 rule B3_HarmAnnotation:
     input:
-        BQC1_PostprocQC_target
+        B3_HarmAnnotation_target
     run:
         print("updating database parameter log with success...")
         mark_success(datetime_str)

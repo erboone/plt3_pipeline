@@ -5,8 +5,8 @@ from datadispatch.orm import ParamLog
 import json
 
 # Constants
-SNAKEFOOD = '/home/erboone/pipeline/snakefood.ini'
-DEFAULT_SNAKEFOOD = '/home/erboone/pipeline/snakefood.default.ini'
+SNAKEFOOD = '/home/erboone/pipeline/snakefood.json'
+DEFAULT_SNAKEFOOD = '/home/erboone/pipeline/snakefood.default.json'
 _output = f'{os.getenv("HOME")}/pipeline/_output'
 OUTPUT = _output
 RUNINFO_KEY = 'Run Info'
@@ -31,6 +31,7 @@ def order_snakefood(
         alt_name:str=None,
         default:bool=False) -> dict:
     
+    print("Ordering snakefood...", end='')
     if default:
         snakefood = DEFAULT_SNAKEFOOD
     elif alt_name:
@@ -45,8 +46,11 @@ def order_snakefood(
         config = json.load(f)
     
     if section_key:
+        print(f"returning config section: {section_key}")
         return config.get(section_key)
+
     else:
+        print(f"returning full config")
         return config
 
 def hash_strli(l:list[str], num_chars:int=8) -> str:
@@ -91,9 +95,14 @@ def _old_hash_parameters(ini_section_key:str, alt_name:str=None) -> str:
 
 
 def hash_parameters(ini_section_key:str, alt_name:str=None) -> str:
+    current = order_snakefood(ini_section_key, alt_name)
+    default = order_snakefood(ini_section_key, alt_name, default=True)
+    if current is None or default is None:
+        raise ValueError(f"Malformed config: make sure all sections have empty dicts instead of null")
+    
     parameters = (
-        dict(sorted(order_snakefood(ini_section_key, alt_name).items())),
-        dict(sorted(order_snakefood(ini_section_key, alt_name, default=True).items()))
+        dict(sorted(current.items())),
+        dict(sorted(default.items()))
     )
     active_par, default_par = parameters
 

@@ -101,7 +101,7 @@ def B1_SaveRawScanpy(
     cpconf = order_snakefood('A1_Cellpose')
     alt_save = cpconf['alt_path']
     if alt_save:
-        alt_paths = {'cellpose': Path(alt_save), 'masks': Path(alt_save) / 'masks'}
+        alt_paths = {'cellpose': str(Path(alt_save)), 'masks': str(Path(alt_save) / 'masks')}
     else:
         # This is the only difference between A2 and B1
         alt_paths = {
@@ -122,7 +122,10 @@ def B1_SaveRawScanpy(
     mdata.log = ('commit_id', commit)
     mdata.log = ('normalization', None)
 
-    mdata.obs[md.BATCH_KEY] = pd.Series(res.BICANID, dtype='category')
+    try:
+        mdata.obs[md.BATCH_KEY] = pd.Series(res.BICANID, dtype='category')
+    except:
+        mdata.obs[md.BATCH_KEY] = pd.Series(res.region, dtype='category')
     mdata.obs[md.CTYPE_KEY] = pd.Series(None)
     mdata.obs['fov_y'] = pd.Series(None)
     mdata.obs['fov_x'] = pd.Series(None)
@@ -141,7 +144,7 @@ def B1_SaveRawScanpy(
 """_summary_
 """
 
-REMOVE_DOUBLETS = preproc_conf.getboolean('remove_doublets')
+REMOVE_DOUBLETS = preproc_conf['remove_doublets']
 MIN_COUNTS = int(preproc_conf['min_counts'])
 MIN_GENES = int(preproc_conf['min_genes'])
 VOLUME_KEY = 'volume'
