@@ -4,6 +4,8 @@ from configparser import ConfigParser
 from pathlib import Path
 from itertools import chain
 import warnings
+from glob import glob
+import re
 
 import numpy as np
 from skimage.measure import regionprops # This has been moved to plotting
@@ -26,6 +28,7 @@ from mftools.mfexperiment import MerscopeExperiment
 from mftools import MerData as md
 from datadispatch.access import select
 from datadispatch.orm import Experiment
+from mftools.plotting import Correlation
 
 from ..meta import order_snakefood
 from ..meta import OUTPUT
@@ -102,11 +105,19 @@ def B1_SaveRawScanpy(
     alt_save = cpconf['alt_path']
     if alt_save:
         alt_paths = {'cellpose': str(Path(alt_save)), 'masks': str(Path(alt_save) / 'masks')}
-    else:
+    elif glob(f"{res.rootdir}/*output*/"):
         # This is the only difference between A2 and B1
         alt_paths = {
             'cellpose': f"{res.rootdir}/*output*/{res.name}/", 
             'masks': f"{res.rootdir}/*output*/{res.name}/"
+        }
+    else:
+        # This is the only difference between A2 and B1
+        alt_paths = {
+            'cellpose': f"{res.rootdir}/{res.name}/", 
+            'masks': f"{res.rootdir}/{res.name}/",
+            'data': f"/mnt/merfish15/MERSCOPE/*data*/202407221121_20240722M176BICANRen22_VMSC10002/",
+            'settings': f"/mnt/merfish15/MERSCOPE/*data*/202407221121_20240722M176BICANRen22_VMSC10002/settings"
         }
 
     e = MerscopeExperiment(res.root.path, res.name, alt_paths=alt_paths)
@@ -126,11 +137,11 @@ def B1_SaveRawScanpy(
         mdata.obs[md.BATCH_KEY] = pd.Series(res.BICANID, dtype='category')
     except:
         mdata.obs[md.BATCH_KEY] = pd.Series(res.region, dtype='category')
-    mdata.obs[md.CTYPE_KEY] = pd.Series(None)
-    mdata.obs['fov_y'] = pd.Series(None)
-    mdata.obs['fov_x'] = pd.Series(None)
-    mdata.obs['global_x'] = pd.Series(None)
-    mdata.obs['global_y'] = pd.Series(None)
+    mdata.obs[md.CTYPE_KEY] = pd.Series("unassigned", dtype='category')
+    mdata.obs['fov_y'] = pd.Series(None, dtype=int)
+    mdata.obs['fov_x'] = pd.Series(None, dtype=int)
+    mdata.obs['global_x'] = pd.Series(None, dtype=float)
+    mdata.obs['global_y'] = pd.Series(None, dtype=float)
 
     # -------------------------- Save object -------------------------------- #
     # TODO: Unsafe write here, figure out a way to use safe write without the 
@@ -148,6 +159,7 @@ REMOVE_DOUBLETS = preproc_conf['remove_doublets']
 MIN_COUNTS = int(preproc_conf['min_counts'])
 MIN_GENES = int(preproc_conf['min_genes'])
 VOLUME_KEY = 'volume'
+BANKSY_KEY = '_BANKSY'
 
 def _filter(mdata:md):
     print(f'Filtering: prefilter')
@@ -188,6 +200,13 @@ def _filter(mdata:md):
 
     return md(adata=mdata)
 
+def _remove_alpha(text):
+    result = ""
+    for char in text:
+        if not char.isalpha():  # Check if the character is NOT an alphabet
+            result += char
+    return result
+
 def A3_Preprocessing(
         exp_name, 
         input, 
@@ -214,15 +233,114 @@ def B2_Preprocessing(
         commit):
     
     mdata = md(adata=sc.read_h5ad(Path(str(input))))
+
+    
     mdata = _filter(mdata)
 
     mdata.log = ('step_name', 'Preprocessing')
     mdata.log = ('step_hash', hashes['Filter'])
-    mdata.log = ('function', 'A3_Preprocessing')
+    mdata.log = ('function', 'B2_Preprocessing')
     mdata.log = ('commit_id', commit)
     mdata.log = ('normalization', "sc.pp.normalize_total(_default params_), sc.pplog1p()")
 
+    # Add banksy here
+    from banksy_utils.filter_utils import filter_cells
+    from banksy.initialize_banksy import initialize_banksy
+    from banksy.embed_banksy import generate_banksy_matrix
+    from banksy_utils.umap_pca import pca_umap
+    from banksy.cluster_methods import run_Leiden_partition
+    from banksy.main import median_dist_to_nearest_neighbour
+
+    # set params
+    # ==========
+    plot_graph_weights = True
+    k_geom = 15 # only for fixed type
+    max_m = 1 # azumithal transform up to kth order
+    nbr_weight_decay = "scaled_gaussian" # can also be "reciprocal", "uniform" or "ranked"
+    coord_keys = ('center_x', 'center_y', 'X_spatial')
+    WM_GENES = order_snakefood("Filter")['wm_genes']
+    # Find median distance to closest neighbours, the median distance will be `sigma`
+
+    # The following are the main hyperparameters for BANKSY
+    resolutions = [0.2] # clustering resolution for UMAP
+    pca_dims = [20] # Dimensionality in which PCA reduces to
+    lambda_list = [0.8] # list of lambda parameters
+
+    banksy_adata = mdata.copy()
+    nbrs = median_dist_to_nearest_neighbour(banksy_adata, key=coord_keys[2])
+    banksy_dict = initialize_banksy(
+        banksy_adata,
+        coord_keys,
+        k_geom,
+        nbr_weight_decay=nbr_weight_decay,
+        max_m=max_m,
+        plt_edge_hist=True,
+        plt_nbr_weights=True,
+        plt_agf_angles=False, # takes long time to plot
+        plt_theta=True,
+    )
+    banksy_dict, banksy_matrix = generate_banksy_matrix(banksy_adata, banksy_dict, lambda_list, max_m)
+    pca_umap(banksy_dict,
+            pca_dims = pca_dims,
+            add_umap = True,
+            plt_remaining_var = False,
+            )
+    
+    results_df, max_num_labels = run_Leiden_partition(
+        banksy_dict,
+        resolutions,
+        num_nn = 50,
+        num_iterations = -1,
+        match_labels = True,
+    )
+
+    
+    labels = results_df.loc['scaled_gaussian_pc20_nc0.80_r0.20', 'labels']
+    banksy_adata.obs[BANKSY_KEY] = labels.dense
+    banksy_adata.obs[BANKSY_KEY] = banksy_adata.obs[BANKSY_KEY].astype('string') + '_banksy'
+    sc.pp.scale(banksy_adata)
+    expression = sc.get.obs_df(banksy_adata, keys=banksy_adata.var_names.to_list() + [BANKSY_KEY])
+    # wm_genes = expression.groupby(by=BANKSY_KEY).mean()[banksy_adata.var_names.intersection(WM_GENES)]
+    # wm_clust = wm_genes.idxmax().mode()
+    # banksy_adata.obs.loc[banksy_adata.obs[BANKSY_KEY].isin(wm_clust.values), BANKSY_KEY] = 'white_matter'
+    
+    wm_markers = banksy_adata.var_names.intersection(WM_GENES)
+    wm_genes = expression.groupby(by=BANKSY_KEY).mean()[wm_markers]
+    wm_clust = wm_genes.idxmax().mode()
+    mdata.obs[BANKSY_KEY] = banksy_adata.obs[BANKSY_KEY].astype('category')
+    dend = sc.tl.dendrogram(mdata, groupby=BANKSY_KEY, inplace=False)
+    wm_ind = int(wm_clust[0].split('_')[0])
+    all_wm_clust = [f"{i}_banksy" for i,x in enumerate(dend['correlation_matrix'][wm_ind] > .7) if x]
+    print(all_wm_clust)
+    mdata.obs[BANKSY_KEY] = mdata.obs[BANKSY_KEY].cat.add_categories('white_matter')
+    mdata.obs.loc[mdata.obs[BANKSY_KEY].isin(all_wm_clust), BANKSY_KEY] = 'white_matter'
+    mdata.obs[BANKSY_KEY] = mdata.obs[BANKSY_KEY].cat.remove_unused_categories()    
+    mdata.obs[BANKSY_KEY] = mdata.obs[BANKSY_KEY].astype('object')
+    print(mdata.obs[BANKSY_KEY])
+    _nametemp = "{date}_BICAN_4x1-{reg}-Q-{num}-{dev}-{samp}.h5ad"
+    for region_str in mdata.obs['region'].unique():
+        subadata = mdata[mdata.obs['region'] == region_str].copy()
+        print(subadata.obs.dtypes)
+        date, _, dev = exp_name.split('_')
+        sample = re.search('[A-Z]{3}[0-9]{4}', exp_name)
+        _region_str = region_str[:sample.span(0)[0]] + region_str[sample.span(0)[1]:]
+        section_code = re.search('[EQ]0[0-9]', _region_str)
+        _region_str = _region_str[:section_code.span(0)[0]] + _region_str[section_code.span(0)[1]:]
+        reg = _region_str
+
+        # name = _nametemp.format([
+        #     date,
+        #     reg,
+        #     "".join([char for char in section_code.group(0) if not char.isalpha()]), 
+        #     dev,
+        #     sample.group(0)
+        # ])
+        name = f"{date}_BICAN_4x1-{reg}-Q-{''.join([char for char in section_code.group(0) if not char.isalpha()])}-{dev}-{sample.group(0)}.h5ad"
+        print(name)
+        subadata.write(name)
+
     mdata.safe_write(Path(str(output)))
+
 
 ################################################################################
 #   Quality control 
@@ -259,6 +377,8 @@ def QC_1_postsegqc(
     print(sc.pp.calculate_qc_metrics(mdata, percent_top=None)[0]['total_counts'].median())
     qcconf = order_snakefood('QC1_postsegqc')
     bulkref_path = qcconf['bulkref_path']
+    qc2conf = order_snakefood('QC2_postannoqc')
+    CONTROL_GENES = qc2conf
     
 
     try:
@@ -270,20 +390,18 @@ def QC_1_postsegqc(
     # TODO: implement a way to load reference data, while checking that it 
     # has been properly sanitized
     bulkref = pd.read_csv(bulkref_path, sep='\t', skiprows=2).reset_index()
+    print(bulkref)
     bulkref = bulkref.drop_duplicates(subset='Description')
     bulkref = bulkref.drop(columns=['id', 'Name']).set_index('Description').mean(axis=1)
     # bulkref = bulkref.apply(np.log1p)
     bulkref.name = 'bulkref'
 
     mdata.X = mdata.layers['counts']
-    
     statistics = []
     regions = list(mdata.obs['region'].cat.categories)
+    fig, axs = plt.subplots(2, 2, figsize=(8, 8))
     for reg in regions:
-        fig, axs = plt.subplots(2, 2, figsize=(8, 8))
-
-        reg_mdata = mdata[mdata.obs['region'] == reg]
-
+        reg_mdata = mdata[(mdata.obs['region'] == reg) & (mdata.obs[BANKSY_KEY] != 'white_matter')].copy()
 
         qc_obs, qc_var = sc.pp.calculate_qc_metrics(reg_mdata, percent_top=None)
         
@@ -293,24 +411,49 @@ def QC_1_postsegqc(
         total_trans_postfilt = qc_obs['total_counts'].sum()
         med_gene_p_cell = qc_obs['n_genes_by_counts'].median()
         
-        sc.pp.normalize_total(reg_mdata, target_sum=1e6, inplace=True)
-        # sc.pp.log1p(reg_mdata)
-        means = sc.get.obs_df(reg_mdata, list(reg_mdata.var_names)).mean(axis=0)
-    
-        corr_ax, corr_stat = _bulk_correlation(means, bulkref, reg, axs[0][0])
-        
-        sc.pp.pca(reg_mdata)
-        sc.pp.neighbors(reg_mdata)
-        sc.tl.umap(reg_mdata)
-        sc.tl.leiden(reg_mdata)
-        sc.pl.embedding(reg_mdata, basis='umap', color='leiden', ax=axs[1][0])
-        sc.pl.embedding(reg_mdata, basis='spatial', color='total_counts', ax=axs[1][1])
+        statistics.append([reg, n_cells, med_trx_p_cell, med_gene_p_cell])
+        # Replicate correlation
+        eckerpath = "/mnt/_MERSCOPE/ecker/"
+        sample = reg[:7]
+        regname = reg[7:]
+        efiles = glob(eckerpath + '*.h5ad')
+        _wc = ".*"
+        print(f"Searching for ecker sample with patterns: {sample} {regname}...", end='')
+        found = False
+        for f in efiles:
+            name = Path(f).name
+            if re.search(_wc + _wc.join(sample) + _wc, name) and \
+                re.search(_wc + regname + _wc, name):
+                ecker_adata = sc.read_h5ad(f)
+                found = True
+                break
+        if found:
+            print("found: name")
+            corr, corrfig = Correlation(ecker_adata, reg_mdata, ax1=f"E-{regname}-{sample}", ax2=f"Qu-{regname}-{sample}", 
+            highlight=CONTROL_GENES, logscale=True)
+            corrfig.savefig(Path(str(output)).parent / f"{regname}-{sample}.png")
 
-        statistics.append([reg, corr_stat, med_trx_p_cell, med_gene_p_cell])
+        else:
+            print("not found; skipping.")
+            continue
 
-        fig.savefig(Path(str(output)))
-        plt.clf()   
 
-    print('region', 'pearsonr', 'median t.p.c.', 'median g.p.c.', sep='\t')
-    for l in statistics:
-        print('\t'.join([str(i) for i in l]))
+
+    sc.pp.normalize_total(mdata, target_sum=1e6, inplace=True)
+    # sc.pp.log1p(reg_mdata)
+    means = sc.get.obs_df(mdata, list(mdata.var_names)).mean(axis=0)
+
+    corr_ax, corr_stat = _bulk_correlation(means, bulkref, reg, axs[0][0])
+
+    sc.pp.pca(mdata)
+    sc.pp.neighbors(mdata)
+    sc.tl.umap(mdata)
+    sc.tl.leiden(mdata)
+    sc.pl.embedding(mdata, basis='umap', color='leiden', ax=axs[1][0])
+    sc.pl.embedding(mdata, basis='spatial', color='total_counts', ax=axs[1][1])
+    sc.pl.embedding(mdata, basis='spatial', color=BANKSY_KEY, ax=axs[0][1])
+
+
+    fig.savefig(Path(str(output)).parent / 'QC.png')
+
+    pd.DataFrame(statistics, columns=['region', 'n_cells', 'median t.p.c.', 'median g.p.c.']).to_csv(Path(str(output)).parent / 'stats.csv')

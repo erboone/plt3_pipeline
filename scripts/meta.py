@@ -1,5 +1,6 @@
 import os
 from configparser import ConfigParser
+import pandas as pd
 from datadispatch.access import update, add
 from datadispatch.orm import ParamLog
 import json
@@ -27,7 +28,7 @@ ERR_MYSTERY_CONFIG_INPUT = "Make sure all 'Run Info' values are filled, with str
 
 
 def order_snakefood(
-        section_key:str=None, 
+        section_key:str=None,
         alt_name:str=None,
         default:bool=False) -> dict:
     
@@ -237,6 +238,10 @@ def check_RunInfo(config):
         
         except NotImplementedError as e:
             raise RuntimeError(ERR_MYSTERY_CONFIG_INPUT) from e
+
+def read_ref_table(region:str):
+    references = pd.read_csv('/home/erboone/pipeline/scripts/ref_paths.csv', index_col=0)
+    return references.loc[region, 'path']
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 import warnings
 
-with warnings.catch_warnings(action="ignore"):
+with warnings.catch_warnings():
     import datadispatch
     import mftools
 
@@ -22,6 +22,7 @@ _output = f'{os.getenv("HOME")}/pipeline/_output'
 ###############################################################################
 # ===================== Hashing config and Logging  ===========================#
 ###############################################################################
+configfile: "snakefood.json"
 
 # ----- Log Git Address ----- #
 # TODO: Add the other major supporting libraries (mftools) + safety check
@@ -34,7 +35,7 @@ commit = get_commit_hash("TODO: this parameter does nothing")
 
 # ----- Copy snakemake file ----- #
 datetime_str = str(datetime.now()).split(".")[0].replace(" ", "_").replace("-", ".")
-sub.run(["cp", "snakefood.ini", f"{_output}/.leftovers/{datetime_str}.ini"])
+sub.run(["cp", "snakefood.json", f"{_output}/.leftovers/{datetime_str}.json"])
 
 
 # =-=#=-=#=- Precalculating Hashes -=#=-=#=-=#=-=#=-=#=-=#=-=#=-=#=-=#=-=#=-=#
@@ -57,7 +58,7 @@ print(results)
 try:
     ids = {f"{res.BICANID}": res.name for res in results}
 except TypeError:
-    ids = {f"temp{i}": res.name for i, res in enumerate(results)}
+    ids = {f"{res.name}": res.name for i, res in enumerate(results)}
 print("ids:", ids)
 hashes["EXPS"] = ids
 
@@ -136,7 +137,7 @@ A3_Filtering_target, A3_target = assemble_target(
 t = {
     "_o": _output,
     "_step": "A3_Annotation",
-    "_file": "${agg}_${a1}_${a4}.${form}",
+    "_file": "${agg}.${a1}.${a4}.${form}",
 }
 h = {
     "a1": hashes["A1_Cellpose"],
@@ -165,7 +166,7 @@ B1_SaveRawScanpy_target, B1_target = assemble_target(
 t = {
     "_o": _output,
     "_step": "B2_Preproc",
-    "_file": "${exp_id}_${b2}.filt.${form}",
+    "_file": "${exp_id}.${b2}.filt.${form}",
 }
 h = {"b2": hashes["Filter"]}
 w = ("exp_id", [id for id in ids.keys()])
@@ -177,13 +178,13 @@ B2_Filtering_target, B2_target = assemble_target(
 t = {
     "_o": _output,
     "_step": "B2_Preproc",
-    "_file": "${exp_id}_${b2}.QC.${form}",
+    "_file": "${exp_id}.${b2}/stats.${form}",
 }
 h = {"b2": hashes["Filter"]}
 w = ("exp_id", [id for id in ids.keys()])
 
 BQC1_PostprocQC_target, BQC1_target = assemble_target(
-    template=t, hashes=h, format=S_IMAGE, wildcards=w
+    template=t, hashes=h, format=S_CSV, wildcards=w
 )
 
 # --- B Preproc:  ---------------------------------------------------------
@@ -199,7 +200,7 @@ h = {
 }
 
 B3_HarmAnnotation_target, B3_target = assemble_target(
-    template=t, hashes=h, format=S_H5AD, wildcards=()
+    template=t, hashes=h, format=S_H5AD, wildcards=w
 )
 
 t = {
@@ -248,11 +249,10 @@ print()
 # ====================== Snakemake Rules - Path A  ============================#
 ###############################################################################
 
-# rule all:
-#     input:
-#         A1_Cellpose_target,
-#         A2_SaveRawScanpy_target,
-#         A4_HarmAnnotation_target
+rule:
+    input:
+        BQC1_PostprocQC_target,
+        BQC2_PostannoQC_target
 
 
 rule A1_Segmentation:
@@ -390,7 +390,7 @@ rule B1:
         B1_target,
     threads: 64
     wildcard_constraints:
-        exp_id="[A-z0-9]{3,5}",
+        exp_id="[^.*]*",
     run:
         name = ids[wildcards.exp_id]
         print("NAME HERE", name, "Output", output)
