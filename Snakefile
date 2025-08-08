@@ -8,6 +8,7 @@ with warnings.catch_warnings():
     from datetime import datetime
     import os, sys
     from string import Template
+    from glob import glob
 
     import datadispatch.access as db
     from datadispatch.orm import ParamLog
@@ -218,6 +219,76 @@ BQC2_PostannoQC_target, BQC2_target = assemble_target(
     template=t, hashes=h, format=S_CSV, wildcards=w
 )
 
+# --- C Preproc:  ---------------------------------------------------------
+
+t = {
+    "_o": _output,
+    "_step": "C2_Preproc",
+    "_file": "C2.${form}",
+}
+h = {}
+w = ("exp_id", [id for id in ids.keys()])
+
+C1_SaveRawScanpy_target, C1_target = assemble_target(
+    template=t, hashes=h, format=S_CHECKPOINT, wildcards=w
+)
+
+t = {
+    "_o": _output,
+    "_step": "C2_Preproc",
+    "_file": "${c2}.filt.${form}",
+}
+h = {"c2": hashes["Filter"]}
+# w = ("exp_id", [id for id in ids.keys()])
+
+C2_Filtering_target, C2_target = assemble_target(
+    template=t, hashes=h, format=S_CHECKPOINT, wildcards=w
+)
+
+t = {
+    "_o": _output,
+    "_step": "C2_Preproc",
+    "_file": "${c2}/CQC1.${form}",
+}
+h = {"c2": hashes["Filter"]}
+w = ("exp_id", [id for id in ids.keys()])
+
+CQC1_PostprocQC_target, CQC1_target = assemble_target(
+    template=t, hashes=h, format=S_CHECKPOINT, wildcards=w
+)
+
+# --- C Annotation:  ---------------------------------------------------------
+# Automated cell label transfer from reference data
+
+t = {
+    "_o": _output,
+    "_step": "C3_Annotation",
+    "_file": "${exp_id}.${c2}.${c3}.${form}",
+}
+h = {
+    "c2": hashes["Filter"],
+    "c3": hashes["A4_HarmAnnotation"]
+}
+
+C3_HarmAnnotation_target, C3_target = assemble_target(
+    template=t, hashes=h, format=S_H5AD, wildcards=w
+)
+
+t = {
+    "_o": _output,
+    "_step": "C3_Annotation",
+    "_file": "${exp_id}.${c2}.${c3}/stats.${form}",
+}
+h = {"c2": hashes["Filter"],
+     "c3": hashes["A4_HarmAnnotation"],
+     "agg": hashes["AGGREGATE"]
+     }
+w = ("exp_id", [id for id in ids.keys()])
+
+CQC2_PostannoQC_target, CQC2_target = assemble_target(
+    template=t, hashes=h, format=S_CSV, wildcards=w
+)
+
 
 print()
 print("-" * 80)
@@ -241,6 +312,18 @@ print("B3_HarmAnnotation_target:", B3_HarmAnnotation_target)
 print("B3_target:", B3_target)
 print("BQC2_PostannoQC_target", BQC2_PostannoQC_target)
 print("BQC2_target", BQC2_target)
+print()
+print("C1_SaveRawScanpy_target:", C1_SaveRawScanpy_target)
+print("C1_target:", C1_target)
+print("C2_Filterin_target:", C2_Filtering_target)
+print("C2_target:", C2_target)
+print("CQC1_PostprocQC_target:", CQC1_PostprocQC_target)
+print("CQC1_target:", CQC1_target)
+print("C3_HarmAnnotation_target:", C3_HarmAnnotation_target)
+print("C3_target:", C3_target)
+print("CQC2_PostannoQC_target", CQC2_PostannoQC_target)
+print("CQC2_target", CQC2_target)
+
 
 print()
 print("-" * 80)
@@ -432,3 +515,95 @@ rule BQC2:
         BQC2_target
     run:
         _3_.QC_2_postanno(input, output, hashes, commit)
+
+###############################################################################
+# ====================== Snakemake Rules - Path C  ============================#
+###############################################################################
+
+
+rule C1_SaveRawScanpy:
+    input:
+        C1_SaveRawScanpy_target,
+    run:
+        print("updating database parameter log with success...")
+        mark_success(datetime_str)
+
+
+rule C2_Filtering:
+    input:
+        C2_Filtering_target,
+    run:
+        print("updating database parameter log with success...")
+        mark_success(datetime_str)
+
+
+rule CQC1_PostprocQC:
+    input:
+        CQC1_PostprocQC_target
+    run:
+        print("updating database parameter log with success...")
+        mark_success(datetime_str)
+
+rule C3_HarmAnnotation:
+    input:
+        C3_HarmAnnotation_target
+    run:
+        print("updating database parameter log with success...")
+        mark_success(datetime_str)
+
+rule CQC2_PostannoQC:
+    input:
+        CQC2_PostannoQC_target
+    run:
+        print("updating database parameter log with success...")
+        mark_success(datetime_str)
+
+
+# ---- Cehind the scenes: rules to produce targets, call at your own risk --- #
+
+rule C1:
+    output:
+        C1_target,
+    threads: 64
+    # wildcard_constraints:
+    #     exp_id="[^.*]*",
+    run:
+        _2_.C1_SaveRawScanpy(input, output, hashes, commit)
+
+
+rule C2:
+    input:
+        C1_target,
+    output:
+        C2_target,
+    run:
+        # name = ids[wildcards.exp_id]
+        # print("NAME HERE", name)
+        _2_.C2_Preprocessing(input, output, hashes, commit)
+
+
+rule CQC1:
+    input:
+        C2_target,
+    output:
+        CQC1_target,
+    run:
+        # name = ids[wildcards.exp_id]
+        _2_.QC_1_postsegqc(input, output, hashes, commit)
+
+rule C3:
+    input:
+        C2_Filtering_target,
+    output:
+        C3_target,
+    run:
+        _3_.C3_HarmAnnotation(input, output, hashes, commit)
+
+rule CQC2:
+    input:
+        C3_target
+    output:
+        CQC2_target
+    run:
+        _3_.QC_2_postanno(input, output, hashes, commit)
+       

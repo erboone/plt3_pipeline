@@ -17,7 +17,8 @@ from cellpose import models
 import pandas as pd
 from scipy.stats import pearsonr
 import scanpy as sc
-import scrublet as scr
+import anndata as an
+# import scrublet as scr
 
 from mftools.fileio import ImageDataset, MerfishAnalysis
 from mftools.plotting import fov_show
@@ -149,6 +150,50 @@ def B1_SaveRawScanpy(
     print(Path(str(output)))
     mdata.safe_write(Path(str(output)))
 
+def C1_SaveRawScanpy( 
+        input, 
+        output, 
+        hashes,
+        commit):
+    
+    def parse_slide_quan(phrase):
+        sample = re.search("[A-Z]{3}[0-9]{4}.*\$", phrase)
+        _region_str = sample.group(0)
+        section_code = re.search('[EQ]0[0-9]', _region_str)
+        _region_str = _region_str[:section_code.span(0)[0]] + _region_str[section_code.span(0)[1]:]
+        reg = _region_str[7:10]
+        return [sample.group()[:7], reg.lower().strip('$'), 'quan']
+
+    def parse_slide_ecker(phrase):
+        sample = re.search('[A-Z]{3}-{,1}[0-9]{4}', phrase)
+        _region_str = phrase[:sample.span(0)[0]] + phrase[sample.span(0)[1]:]
+        middle_part = re.search('4[Xx]1.*0[0-9]{1}', _region_str)
+        _, reg, code = middle_part.group(0).split('-')[:3]
+        return [sample.group().replace('-',''), reg.lower(), 'ecker']
+
+
+    mdata = sc.read_h5ad("/data/_MERSCOPE/BICAN_BG_proseg_mapped_filt.h5ad")
+
+    words = mdata.obs[['region', 'slide']].drop_duplicates(ignore_index=True)
+    for tup in words.itertuples():
+        _, r, s = (tup[0], tup[1], tup[2])
+        phrase =     r+'$'+s
+        sub_mdata = mdata[(mdata.obs['region'] == r) & (mdata.obs['slide'] == s)].copy()
+        try:
+            donor, br_region, rep = parse_slide_quan(phrase)
+        except AttributeError:
+            donor, br_region, rep = parse_slide_ecker(phrase)
+        
+        sub_mdata.obs['donor'] = donor
+        sub_mdata.obs['br_region'] = br_region
+        sub_mdata.obs['rep'] = rep
+        
+        sub_mdata.write(filename=str(Path(str(output)).parent / f"{donor}_{br_region}_{rep}.h5ad"))
+
+    with open(str(output), 'w') as f:
+        f.write('This is just a flag')
+
+
 ################################################################################
 #   Pre-processing
 ################################################################################
@@ -174,16 +219,16 @@ def _filter(mdata:md):
     diff = ncells - mdata.shape[0]; print(f"{diff}({diff/ncells:.2f})cells removed by min genes"); ncells = mdata.shape[0]
 
     # Scrublet
-    if REMOVE_DOUBLETS:
-        scrub = scr.Scrublet(mdata.X)
-        try:
-            dblt_score, dblt_pred = scrub.scrub_doublets(log_transform=True)
-        except ValueError:
-            warnings.warn("Using fewer components for PCA: LOOK INTO THIS; why so few?.")
-            dblt_score, dblt_pred = scrub.scrub_doublets(log_transform=True, n_prin_comps=2)
+    # if REMOVE_DOUBLETS:
+    #     scrub = scr.Scrublet(mdata.X)
+    #     try:
+    #         dblt_score, dblt_pred = scrub.scrub_doublets(log_transform=True)
+    #     except ValueError:
+    #         warnings.warn("Using fewer components for PCA: LOOK INTO THIS; why so few?.")
+    #         dblt_score, dblt_pred = scrub.scrub_doublets(log_transform=True, n_prin_comps=2)
 
-        mdata = mdata[dblt_pred]
-        diff = ncells - mdata.shape[0]; print(f"{diff}({diff/ncells:.2f})cells removed by scrublet"); ncells = mdata.shape[0]
+    #     mdata = mdata[dblt_pred]
+    #     diff = ncells - mdata.shape[0]; print(f"{diff}({diff/ncells:.2f})cells removed by scrublet"); ncells = mdata.shape[0]
 
     # Volume
     if VOLUME_KEY in mdata.obs.columns:
@@ -341,6 +386,120 @@ def B2_Preprocessing(
 
     mdata.safe_write(Path(str(output)))
 
+def C2_Preprocessing(
+        input, 
+        output, 
+        hashes,
+        commit):
+    
+    dir = Path(str(input))
+    paths = pd.Series([g for g in glob(str(dir.parent /'*.h5ad'))], name='paths')
+    names = pd.Series([str(Path(g).name)[:-5] for g in glob(str(dir.parent /'*.h5ad'))], name='names')
+    
+    dirdf = pd.DataFrame()
+    dirdf['path'] = paths
+    dirdf['name'] = names
+
+    sep = lambda x: x.split("_")[-3:]
+    df = pd.DataFrame(dirdf['name'].map(sep).to_list())
+    dirdf[['donor', 'br_region', 'rep']] = df
+    print(dirdf)
+    dirdf = dirdf.set_index(['donor', 'br_region', 'rep'])
+
+    for br_reg in ['pu']:#dirdf.index.get_level_values(1).tolist():
+        qpaths = list(dirdf.loc[:, br_reg, 'quan']['path'].values)
+        epaths = list(dirdf.loc[:, br_reg, 'ecker']['path'].values)
+
+        qdata = an.concat([sc.read_h5ad(p) for p in qpaths])
+        edata = an.concat([sc.read_h5ad(p) for p in epaths])
+        edata.obsm['X_spatial'][0] += 6000
+
+        mdata = an.concat([qdata, edata])
+
+        # Add banksy here
+        from banksy_utils.filter_utils import filter_cells
+        from banksy.initialize_banksy import initialize_banksy
+        from banksy.embed_banksy import generate_banksy_matrix
+        from banksy_utils.umap_pca import pca_umap
+        from banksy.cluster_methods import run_Leiden_partition
+        from banksy.main import median_dist_to_nearest_neighbour
+
+        # set params
+        # ==========
+        plot_graph_weights = True
+        k_geom = 15 # only for fixed type
+        max_m = 1 # azumithal transform up to kth order
+        nbr_weight_decay = "scaled_gaussian" # can also be "reciprocal", "uniform" or "ranked"
+        coord_keys = ('center_x', 'center_y', 'X_spatial')
+        WM_GENES = order_snakefood("Filter")['wm_genes']
+        # Find median distance to closest neighbours, the median distance will be `sigma`
+
+        # The following are the main hyperparameters for BANKSY
+        resolutions = [0.2] # clustering resolution for UMAP
+        pca_dims = [20] # Dimensionality in which PCA reduces to
+        lambda_list = [0.8] # list of lambda parameters
+
+        banksy_adata = mdata.copy()
+        nbrs = median_dist_to_nearest_neighbour(banksy_adata, key=coord_keys[2])
+        banksy_dict = initialize_banksy(
+            banksy_adata,
+            coord_keys,
+            k_geom,
+            nbr_weight_decay=nbr_weight_decay,
+            max_m=max_m,
+            plt_edge_hist=True,
+            plt_nbr_weights=True,
+            plt_agf_angles=False, # takes long time to plot
+            plt_theta=True,
+        )
+        banksy_dict, banksy_matrix = generate_banksy_matrix(banksy_adata, banksy_dict, lambda_list, max_m)
+        pca_umap(banksy_dict,
+                pca_dims = pca_dims,
+                add_umap = True,
+                plt_remaining_var = False,
+                )
+        
+        results_df, max_num_labels = run_Leiden_partition(
+            banksy_dict,
+            resolutions,
+            num_nn = 50,
+            num_iterations = -1,
+            match_labels = True,
+        )
+
+        
+        labels = results_df.loc['scaled_gaussian_pc20_nc0.80_r0.20', 'labels']
+        banksy_adata.obs[BANKSY_KEY] = labels.dense
+        banksy_adata.obs[BANKSY_KEY] = banksy_adata.obs[BANKSY_KEY].astype('string') + '_banksy'
+        sc.pp.scale(banksy_adata)
+        expression = sc.get.obs_df(banksy_adata, keys=banksy_adata.var_names.to_list() + [BANKSY_KEY])
+        # wm_genes = expression.groupby(by=BANKSY_KEY).mean()[banksy_adata.var_names.intersection(WM_GENES)]
+        # wm_clust = wm_genes.idxmax().mode()
+        # banksy_adata.obs.loc[banksy_adata.obs[BANKSY_KEY].isin(wm_clust.values), BANKSY_KEY] = 'white_matter'
+        
+        wm_markers = banksy_adata.var_names.intersection(WM_GENES)
+        wm_genes = expression.groupby(by=BANKSY_KEY).mean()[wm_markers]
+        wm_clust = wm_genes.idxmax().mode()
+        mdata.obs[BANKSY_KEY] = banksy_adata.obs[BANKSY_KEY].astype('category')
+        dend = sc.tl.dendrogram(mdata, groupby=BANKSY_KEY, inplace=False)
+        wm_ind = int(wm_clust[0].split('_')[0])
+        all_wm_clust = [f"{i}_banksy" for i,x in enumerate(dend['correlation_matrix'][wm_ind] > .6) if x]
+        print(all_wm_clust)
+        mdata.obs[BANKSY_KEY] = mdata.obs[BANKSY_KEY].cat.add_categories('white_matter')
+        mdata.obs.loc[mdata.obs[BANKSY_KEY].isin(all_wm_clust), BANKSY_KEY] = 'white_matter'
+        mdata.obs[BANKSY_KEY] = mdata.obs[BANKSY_KEY].cat.remove_unused_categories()    
+        mdata.obs[BANKSY_KEY] = mdata.obs[BANKSY_KEY].astype('object')
+        print(mdata.obs[BANKSY_KEY])
+
+        mdata.write(Path(str(output)).parent / f"{br_reg}.h5ad")
+
+    with open(str(output), 'w') as f:
+        f.write('This is just a flag')
+
+
+
+
+
 
 ################################################################################
 #   Quality control 
@@ -437,6 +596,19 @@ def QC_1_postsegqc(
             print("not found; skipping.")
             continue
 
+    if 'rep' in mdata.obs.columns:        
+        sub_mdata_q = mdata[mdata.obs['rep'] == 'quan']
+        sub_mdata_e = mdata[mdata.obs['rep'] == 'ecker']
+        res, fig = Correlation(sub_mdata_q, sub_mdata_e, ax1='quan', ax2='ecker', highlight=CONTROL_GENES)
+        fig.savefig(Path(str(output)).parent / f"{reg}.repcorr.png")
+
+    if 'br_region' in mdata.obs.columns:    
+        from itertools import combinations
+        for br_reg1, br_reg2 in  combinations(mdata.obs['br_region'].unique().tolist(), 2):
+            sub_mdata_q = mdata[mdata.obs['br_region'] == br_reg1]
+            sub_mdata_e = mdata[mdata.obs['rep'] == br_reg2]
+            res, fig = Correlation(sub_mdata_q, sub_mdata_e, ax1='quan', ax2='ecker', highlight=CONTROL_GENES)
+            fig.savefig(Path(str(output)).parent / f"{reg}.regcorr.png")
 
 
     sc.pp.normalize_total(mdata, target_sum=1e6, inplace=True)

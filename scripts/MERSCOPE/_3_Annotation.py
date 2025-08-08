@@ -9,7 +9,7 @@ import scanpy as sc
 import pandas as pd
 import anndata as an
 import numpy as np
-import scrublet as scr
+# import scrublet as scr
 from sklearn.neighbors import KNeighborsClassifier
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
