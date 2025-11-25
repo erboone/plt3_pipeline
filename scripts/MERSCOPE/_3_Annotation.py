@@ -110,7 +110,7 @@ def A4_HarmAnnotation(input, output, hashes, commit):
     # refdata = refdata[~refdata.obs[CELLTYPE_KEY].isna()]
     print("Refdata:", refdata.shape)
     for ctkey in CELLTYPE_KEY:
-        refdata.obs[ctkey] = refdata.obs[ctkey].cat.add_categories('unlabeled')
+        refdata.obs[ctkey] = refdata.obs[ctkey].astype('category').cat.add_categories('unlabeled')
         refdata.obs.loc[refdata.obs[ctkey].isna(), ctkey] = 'unlabeled'
     try:
         refdata.uns.pop(f'{md.CTYPE_KEY}_colors')
@@ -202,7 +202,10 @@ def A4_HarmAnnotation(input, output, hashes, commit):
         print("Preintegration UMAP", end=' -- ')
         # Preintegration umap
         print("PCA", end=' ')
-        adata.obsm.pop('X_pca')
+        try:    
+            adata.obsm.pop('X_pca')
+        except KeyError:
+            pass
         sc.pp.pca(adata)
         print("-> Neighbors", end=' ')
         sc.pp.neighbors(adata, n_neighbors=30, metric='euclidean')
@@ -306,6 +309,8 @@ def QC_2_postanno(
         output,
         hashes,
         commit):
+    import warnings
+    warnings.filterwarnings("ignore")
     INPATH = Path(str(input))
     OUTPATH = Path(str(output))
     print(INPATH)
@@ -365,17 +370,20 @@ def QC_2_postanno(
 
 
     # add mask columns
-    cell_masks = pd.Series(name='mask')
-    mask_paths = [Path(g) for g in glob(MASKS)]
-    for mp in mask_paths:
-        label = mp.name.split('_')[1]
-        _cells = pd.Index(pd.read_csv(mp).values.flatten())
-        cell_masks = cell_masks.reindex(cell_masks.index.append(_cells))
-        cell_masks.loc[_cells] = label
-
+    try:
+        cell_masks = pd.Series(name='mask')
+        mask_paths = [Path(g) for g in glob(MASKS)]
+        for mp in mask_paths:
+            label = mp.name.split('_')[1]
+            _cells = pd.Index(pd.read_csv(mp).values.flatten())
+            cell_masks = cell_masks.reindex(cell_masks.index.append(_cells))
+            cell_masks.loc[_cells] = label
+    except:
+        print('skipping mask section...')
+        cell_masks = pd.Series('none', name='mask')
     adata.obs['mask'] = cell_masks.astype('category')
 
-    print(cell_masks)
+    # print(cell_masks)
     # print(adata.obs['mask'].groupby(by='mask').size())
         
     for reg in adata.obs['region'].unique():
@@ -388,7 +396,7 @@ def QC_2_postanno(
         sub_adata.X = sub_adata.layers['counts']
         _stats.append(sub_adata.shape[0]) # For stats: n.cells
         obs_qc, var_qc = sc.pp.calculate_qc_metrics(sub_adata, percent_top=None)
-        print(obs_qc, var_qc)
+        # print(obs_qc, var_qc)
         _stats.append(obs_qc['total_counts'].mean()) # for stats: med.trx.p.cell
         _stats.append(obs_qc['total_counts'].median()) # for stats: med.trx.p.cell
         _stats.append(obs_qc['n_genes_by_counts'].median()) # For stats: med.genes.p.cell
@@ -407,6 +415,7 @@ def QC_2_postanno(
         nums = sub_adata.obs.groupby(by=md.CTYPE_KEY).size()
         drop = nums[nums < 2].index
         temp = sub_adata[~sub_adata.obs[md.CTYPE_KEY].isin(drop)]
+        temp = sc.pp.log1p(temp, layer='counts', copy=True)
         sc.tl.rank_genes_groups(temp, groupby=md.CTYPE_KEY, n_genes=3)
         fig = sc.pl.rank_genes_groups_dotplot(temp, standard_scale='var', return_fig=True)
         fig.savefig(OUTPATH_DIR / f'{reg}_1.1mark.png', bbox_inches='tight')
@@ -485,6 +494,12 @@ def QC_2_postanno(
             H_PALETTE= HIGHLIGHT
             HIGHLIGHT=HIGHLIGHT.keys()
         fig = sc.pl.embedding(sub_adata, basis='spatial', color=md.CTYPE_KEY, return_fig=True)
+        xmin=100
+        xmax=xmin + (5000)
+        try:
+            fig.gca().hlines(y=sub_adata.obsm['X_spatial'][:, 0].min() - 1000, xmin=xmin, xmax=xmax,  colors=(.9,.9,.9))
+        except KeyError:
+            fig.gca().hlines(y=sub_adata.obsm['spatial'][:, 0].min() - 1000, xmin=xmin, xmax=xmax,  colors=(.9,.9,.9))
         fig.savefig(OUTPATH_DIR / f'{reg}_3.2spat.png', bbox_inches='tight') # bbox_extra_artists=(lgd,text),
 
         # umap
@@ -504,7 +519,7 @@ def QC_2_postanno(
             adatas.append(_adata)
         refdata = sc.concat(adatas)
         ax = celltype_corr(sub_adata, refdata, (md.CTYPE_KEY, spatial_key))
-        ax.get_figure().savefig(OUTPATH_DIR / f'{reg}_5ctcorr.png', bbox_inches='tight')
+        ax.savefig(OUTPATH_DIR / f'{reg}_5ctcorr.png', bbox_inches='tight')
     
 
         # Control genes spatial distribution and stats 
@@ -542,7 +557,7 @@ def QC_2_postanno(
         gene_ex_data.loc[CONTROL_GENES, 'cat'] = "control"
         palette = {"non-control":'tab:blue', "control":'tab:red'}
         gene_ex_data['xticks'] = gene_ex_data.index
-        print(gene_ex_data)
+        # print(gene_ex_data)
         ctrl_gene_index = gene_ex_data.index.difference(CONTROL_GENES)
         gene_ex_data.loc[ctrl_gene_index, 'xticks'] = ""
         gene_ex_data.sort_values(by='counts', ascending=False, inplace=True)
@@ -557,11 +572,12 @@ def QC_2_postanno(
         plt.clf()
         
         stat_df.loc[reg] = _stats
-        print(ctrlstat_df.columns)
-        print(_ctrlstats)
+        # print(ctrlstat_df.columns)
+        # print(_ctrlstats)
         ctrlstat_df.loc[reg] = _ctrlstats
         plt.close("all")
-        
+    
+    _stats = []
     _sub_adata = adata.copy()
     reg = "combined"
     _stats.append(_sub_adata.shape[0]) # for stats: premask.n.cell
@@ -571,7 +587,7 @@ def QC_2_postanno(
     sub_adata.X = sub_adata.layers['counts']
     _stats.append(sub_adata.shape[0]) # For stats: n.cells
     obs_qc, var_qc = sc.pp.calculate_qc_metrics(sub_adata, percent_top=None)
-    print(obs_qc, var_qc)
+    # print(obs_qc, var_qc)
     _stats.append(obs_qc['total_counts'].mean()) # for stats: med.trx.p.cell
     _stats.append(obs_qc['total_counts'].median()) # for stats: med.trx.p.cell
     _stats.append(obs_qc['n_genes_by_counts'].median()) # For stats: med.genes.p.cell
@@ -590,6 +606,7 @@ def QC_2_postanno(
     nums = sub_adata.obs.groupby(by=md.CTYPE_KEY).size()
     drop = nums[nums < 2].index
     temp = sub_adata[~sub_adata.obs[md.CTYPE_KEY].isin(drop)]
+    temp = sc.pp.log1p(temp, layer='counts', copy=True)
     sc.tl.rank_genes_groups(temp, groupby=md.CTYPE_KEY, n_genes=3)
     fig = sc.pl.rank_genes_groups_dotplot(temp, standard_scale='var', return_fig=True)
     fig.savefig(OUTPATH_DIR / f'{reg}_1.1mark.png', bbox_inches='tight')
@@ -670,15 +687,15 @@ def QC_2_postanno(
     fig = sc.pl.embedding(sub_adata, basis='spatial', color=md.CTYPE_KEY, return_fig=True)
     fig.savefig(OUTPATH_DIR / f'{reg}_3.2spat.png', bbox_inches='tight') # bbox_extra_artists=(lgd,text),
 
-    # umap
-    sub_adata.obsm.pop('X_pca')
-    sc.pp.pca(sub_adata)
-    sc.pp.neighbors(sub_adata, n_neighbors=30, metric='euclidean')
-    sc.pp.umap()
-    fig = sc.pl.embedding(sub_adata, basis='umap', color=md.CTYPE_KEY, return_fig=True)
-    fig.savefig(OUTPATH_DIR / f'{reg}_4umap.png', bbox_inches='tight')
-    plt.clf()
-    # plt.rcParams.update(plt.rcParamsDefault)
+    # # umap
+    # sub_adata.obsm.pop('X_pca')
+    # sc.pp.pca(sub_adata)
+    # sc.pp.neighbors(sub_adata, n_neighbors=30, metric='euclidean')
+    # sc.tl.umap(sub_adata, min_dist=.3)
+    # fig = sc.pl.embedding(sub_adata, basis='umap', color=md.CTYPE_KEY, return_fig=True)
+    # fig.savefig(OUTPATH_DIR / f'{reg}_4umap.png', bbox_inches='tight')
+    # plt.clf()
+    # # plt.rcParams.update(plt.rcParamsDefault)
 
     # cell-type correlations
     matplotlib.rcParams.update(matplotlib.rcParamsDefault)
@@ -693,7 +710,7 @@ def QC_2_postanno(
     if refdata.X.min() > -.01 and refdata.X.max() < 13:
         refdata.X = np.exp(refdata.X.toarray()) - 1
     ax = celltype_corr(sub_adata, refdata, (md.CTYPE_KEY, spatial_key))
-    ax.get_figure().savefig(OUTPATH_DIR / f'{reg}_5ctcorr.png', bbox_inches='tight')
+    ax.savefig(OUTPATH_DIR / f'{reg}_5ctcorr.png', bbox_inches='tight')
 
 
     # Control genes spatial distribution and stats 
@@ -731,7 +748,7 @@ def QC_2_postanno(
     gene_ex_data.loc[CONTROL_GENES, 'cat'] = "control"
     palette = {"non-control":'tab:blue', "control":'tab:red'}
     gene_ex_data['xticks'] = gene_ex_data.index
-    print(gene_ex_data)
+    # print(gene_ex_data)
     ctrl_gene_index = gene_ex_data.index.difference(CONTROL_GENES)
     gene_ex_data.loc[ctrl_gene_index, 'xticks'] = ""
     gene_ex_data.sort_values(by='counts', ascending=False, inplace=True)
@@ -744,10 +761,11 @@ def QC_2_postanno(
     ax.tick_params("x", rotation=90)
     ax.get_figure().savefig(OUTPATH_DIR / f'{reg}_7absgene.png', bbox_inches='tight')
     plt.clf()
-
+    print(stat_df)
+    print(_stats)
     stat_df.loc[reg] = _stats
-    print(ctrlstat_df.columns)
-    print(_ctrlstats)
+    # print(ctrlstat_df.columns)
+    # print(_ctrlstats)
     ctrlstat_df.loc[reg] = _ctrlstats
     plt.close("all")
 

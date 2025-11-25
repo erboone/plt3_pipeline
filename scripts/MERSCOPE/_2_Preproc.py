@@ -311,56 +311,56 @@ def B2_Preprocessing(
     pca_dims = [20] # Dimensionality in which PCA reduces to
     lambda_list = [0.8] # list of lambda parameters
 
-    banksy_adata = mdata.copy()
-    nbrs = median_dist_to_nearest_neighbour(banksy_adata, key=coord_keys[2])
-    banksy_dict = initialize_banksy(
-        banksy_adata,
-        coord_keys,
-        k_geom,
-        nbr_weight_decay=nbr_weight_decay,
-        max_m=max_m,
-        plt_edge_hist=True,
-        plt_nbr_weights=True,
-        plt_agf_angles=False, # takes long time to plot
-        plt_theta=True,
-    )
-    banksy_dict, banksy_matrix = generate_banksy_matrix(banksy_adata, banksy_dict, lambda_list, max_m)
-    pca_umap(banksy_dict,
-            pca_dims = pca_dims,
-            add_umap = True,
-            plt_remaining_var = False,
-            )
+    # banksy_adata = mdata.copy()
+    # nbrs = median_dist_to_nearest_neighbour(banksy_adata, key=coord_keys[2])
+    # banksy_dict = initialize_banksy(
+    #     banksy_adata,
+    #     coord_keys,
+    #     k_geom,
+    #     nbr_weight_decay=nbr_weight_decay,
+    #     max_m=max_m,
+    #     plt_edge_hist=True,
+    #     plt_nbr_weights=True,
+    #     plt_agf_angles=False, # takes long time to plot
+    #     plt_theta=True,
+    # )
+    # banksy_dict, banksy_matrix = generate_banksy_matrix(banksy_adata, banksy_dict, lambda_list, max_m)
+    # pca_umap(banksy_dict,
+    #         pca_dims = pca_dims,
+    #         add_umap = True,
+    #         plt_remaining_var = False,
+    #         )
     
-    results_df, max_num_labels = run_Leiden_partition(
-        banksy_dict,
-        resolutions,
-        num_nn = 50,
-        num_iterations = -1,
-        match_labels = True,
-    )
+    # results_df, max_num_labels = run_Leiden_partition(
+    #     banksy_dict,
+    #     resolutions,
+    #     num_nn = 50,
+    #     num_iterations = -1,
+    #     match_labels = True,
+    # )
 
     
-    labels = results_df.loc['scaled_gaussian_pc20_nc0.80_r0.20', 'labels']
-    banksy_adata.obs[BANKSY_KEY] = labels.dense
-    banksy_adata.obs[BANKSY_KEY] = banksy_adata.obs[BANKSY_KEY].astype('string') + '_banksy'
-    sc.pp.scale(banksy_adata)
-    expression = sc.get.obs_df(banksy_adata, keys=banksy_adata.var_names.to_list() + [BANKSY_KEY])
-    # wm_genes = expression.groupby(by=BANKSY_KEY).mean()[banksy_adata.var_names.intersection(WM_GENES)]
-    # wm_clust = wm_genes.idxmax().mode()
-    # banksy_adata.obs.loc[banksy_adata.obs[BANKSY_KEY].isin(wm_clust.values), BANKSY_KEY] = 'white_matter'
+    # labels = results_df.loc['scaled_gaussian_pc20_nc0.80_r0.20', 'labels']
+    # banksy_adata.obs[BANKSY_KEY] = labels.dense
+    # banksy_adata.obs[BANKSY_KEY] = banksy_adata.obs[BANKSY_KEY].astype('string') + '_banksy'
+    # sc.pp.scale(banksy_adata)
+    # expression = sc.get.obs_df(banksy_adata, keys=banksy_adata.var_names.to_list() + [BANKSY_KEY])
+    # # wm_genes = expression.groupby(by=BANKSY_KEY).mean()[banksy_adata.var_names.intersection(WM_GENES)]
+    # # wm_clust = wm_genes.idxmax().mode()
+    # # banksy_adata.obs.loc[banksy_adata.obs[BANKSY_KEY].isin(wm_clust.values), BANKSY_KEY] = 'white_matter'
     
-    wm_markers = banksy_adata.var_names.intersection(WM_GENES)
-    wm_genes = expression.groupby(by=BANKSY_KEY).mean()[wm_markers]
-    wm_clust = wm_genes.idxmax().mode()
-    mdata.obs[BANKSY_KEY] = banksy_adata.obs[BANKSY_KEY].astype('category')
-    dend = sc.tl.dendrogram(mdata, groupby=BANKSY_KEY, inplace=False)
-    wm_ind = int(wm_clust[0].split('_')[0])
-    all_wm_clust = [f"{i}_banksy" for i,x in enumerate(dend['correlation_matrix'][wm_ind] > .7) if x]
-    print(all_wm_clust)
-    mdata.obs[BANKSY_KEY] = mdata.obs[BANKSY_KEY].cat.add_categories('white_matter')
-    mdata.obs.loc[mdata.obs[BANKSY_KEY].isin(all_wm_clust), BANKSY_KEY] = 'white_matter'
-    mdata.obs[BANKSY_KEY] = mdata.obs[BANKSY_KEY].cat.remove_unused_categories()    
-    mdata.obs[BANKSY_KEY] = mdata.obs[BANKSY_KEY].astype('object')
+    # # wm_markers = banksy_adata.var_names.intersection(WM_GENES)
+    # # wm_genes = expression.groupby(by=BANKSY_KEY).mean()[wm_markers]
+    # # wm_clust = wm_genes.idxmax().mode()
+    # mdata.obs[BANKSY_KEY] = banksy_adata.obs[BANKSY_KEY].astype('category')
+    # # dend = sc.tl.dendrogram(mdata, groupby=BANKSY_KEY, inplace=False)
+    # # wm_ind = int(wm_clust[0].split('_')[0])
+    # # all_wm_clust = [f"{i}_banksy" for i,x in enumerate(dend['correlation_matrix'][wm_ind] > .7) if x]
+    # # print(all_wm_clust)
+    # mdata.obs[BANKSY_KEY] = mdata.obs[BANKSY_KEY]
+    # mdata.obs.loc[mdata.obs[BANKSY_KEY].isin(all_wm_clust), BANKSY_KEY] = 'white_matter'
+    # mdata.obs[BANKSY_KEY] = mdata.obs[BANKSY_KEY].cat.remove_unused_categories()    
+    mdata.obs[BANKSY_KEY] = pd.Series('placeholder').astype('category')#mdata.obs[BANKSY_KEY].astype('object')
     print(mdata.obs[BANKSY_KEY])
     _nametemp = "{date}_BICAN_4x1-{reg}-Q-{num}-{dev}-{samp}.h5ad"
     for region_str in mdata.obs['region'].unique():
@@ -405,8 +405,12 @@ def C2_Preprocessing(
     dirdf[['donor', 'br_region', 'rep']] = df
     print(dirdf)
     dirdf = dirdf.set_index(['donor', 'br_region', 'rep'])
+    print('Regions:', dirdf.index.get_level_values(1).unique().tolist())
+    for br_reg in dirdf.index.get_level_values(1).unique().tolist():
+        if (Path(str(output)).parent / f"{br_reg}.banksy._h5ad").exists():
+            print(f"Skipping {br_reg}")
+            continue
 
-    for br_reg in ['pu']:#dirdf.index.get_level_values(1).tolist():
         qpaths = list(dirdf.loc[:, br_reg, 'quan']['path'].values)
         epaths = list(dirdf.loc[:, br_reg, 'ecker']['path'].values)
 
@@ -435,11 +439,12 @@ def C2_Preprocessing(
         # Find median distance to closest neighbours, the median distance will be `sigma`
 
         # The following are the main hyperparameters for BANKSY
-        resolutions = [0.2] # clustering resolution for UMAP
+        resolutions = [0.8] # clustering resolution for UMAP
         pca_dims = [20] # Dimensionality in which PCA reduces to
         lambda_list = [0.8] # list of lambda parameters
 
         banksy_adata = mdata.copy()
+        sc.pp.normalize_per_cell(banksy_adata)
         nbrs = median_dist_to_nearest_neighbour(banksy_adata, key=coord_keys[2])
         banksy_dict = initialize_banksy(
             banksy_adata,
@@ -468,7 +473,7 @@ def C2_Preprocessing(
         )
 
         
-        labels = results_df.loc['scaled_gaussian_pc20_nc0.80_r0.20', 'labels']
+        labels = results_df.loc['scaled_gaussian_pc20_nc0.80_r0.80', 'labels']
         banksy_adata.obs[BANKSY_KEY] = labels.dense
         banksy_adata.obs[BANKSY_KEY] = banksy_adata.obs[BANKSY_KEY].astype('string') + '_banksy'
         sc.pp.scale(banksy_adata)
@@ -491,7 +496,7 @@ def C2_Preprocessing(
         mdata.obs[BANKSY_KEY] = mdata.obs[BANKSY_KEY].astype('object')
         print(mdata.obs[BANKSY_KEY])
 
-        mdata.write(Path(str(output)).parent / f"{br_reg}.h5ad")
+        mdata.write(Path(str(output)).parent / f"{br_reg}.banksy._h5ad")
 
     with open(str(output), 'w') as f:
         f.write('This is just a flag')

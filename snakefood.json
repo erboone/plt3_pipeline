@@ -1,8 +1,8 @@
 {
   "Run Info": {
-    "description": "Annotating and getting control gene stats.",
-    "where_description": "Ultra BasalGanglia",
-    "where": "Experiment.name.in_(['202506221351_20250622M207BICANRen38_VMSC32110'])",
+    "description": "Ren31: MTC cortex",
+    "where_description": "Ren43",
+    "where": "Experiment.name == '202511141104_20251114M254BICANRen65_VMSC32010'",
     "qc_path": "_output/quality_control/"
   },
 
@@ -22,34 +22,44 @@
       "remove_doublets": false,
       "min_counts": 5,
       "min_genes": 3,
-      "wm_genes": ["MROH9", "VCAN-AS1", "FMO6P", "FMO3", "BX284613.2", "AL512308.1", "LHFPL3-AS1", "Z94057.1", "AC004852.2", "LINC00402", "BX284613.2", "MROH9", "FMO6P", "PDGFRA", "VCAN", "FERMT1", "AL512308.1", "OLIG2", "AC004852.2", "COL9A1", "AC004852.2", "AL512308.1", "PDGFRA", "BX284613.2", "GPR17", "VCAN", "CSPG4", "AC117464.1", "OLIG2", "FERMT1", "AC004852.2", "PDGFRA", "GPNMB", "GPR17", "AL512308.1", "OLIG2", "COL20A1", "CSPG4", "OLIG1", "AC117464.1", "AC004852.2", "BX284613.2", "PDGFRA", "AL512308.1", "VCAN", "OLIG2", "OLIG1", "GPR17", "CSPG4", "FERMT1", "GPR17", "AL512308.1", "TNS3", "BCAS1", "MIR503HG", "AC008080.4", "NKX2-2", "GPNMB", "INAVA", "FIBIN", "GPR17", "AC008080.4", "FRG2DP", "AL512308.1", "MDFI", "LINC01447", "TNS3", "BCAS1", "ADAM33", "MIR503HG", "AC008080.4", "GPR17", "AC020909.2", "APCDD1", "ACAN", "DCT", "AC022433.1", "KANK2", "FRG2DP", "DOCK6", "OPALIN", "CD9", "AC020909.2", "MAL", "LINC00639", "AC110285.1", "PLLP", "LINC01170", "MAG", "SLCO1A2", "OPALIN", "LINC01608", "CD22", "CDH1", "FA2H", "LINC01099", "LINC01792", "MYRF", "LINC00639", "AC110285.1", "CNDP1", "LINC01608", "GREM1", "OPALIN", "FA2H", "AC110285.1", "MYRF", "CD22", "LINC01792", "LINC00906", "SLC5A11", "FA2H", "AL033523.1", "CD22", "AC012494.1", "MOBP", "MYRF", "SH3TC2-DT", "PRR5L", "CNDP1", "AC004690.2", "SLC5A11", "ITGA2", "AL033523.1", "LINC02882", "MOG", "FOLH1", "CARNS1", "LINC01949", "LRP2", "LINC01608", "OPALIN", "LINC01792", "SLCO1A2", "LINC02882", "FOLH1", "MAL", "ASPA", "AC108721.2", "SH3TC2", "CNDP1", "LINC01608", "OPALIN", "RNASE1", "LINC01792", "NKX6-2", "MAG", "PPP1R14A", "CD9", "TMEM98", "OPALIN", "LINC01608", "CD9", "LINC01792", "RNASE1", "CNDP1", "AC110285.1", "PLLP", "NKX6-2", "MAG", "AC061958.1", "PDE4B-AS1", "AL589787.1", "LINC01608", "MUSK", "AC103831.1", "AC026746.1", "OPALIN", "AC093330.1", "SPATA22", "MBOAT1", "AC110809.1", "AC008945.2", "S100A1", "AC114485.1", "AC007106.2", "LINC01445", "LINC01549", "AC004690.2", "S100B", "PTCSC3", "AC012494.2", "AL591115.1", "AC103831.1", "AC093330.1", "AL589787.1", "AC061958.1", "PDE4B-AS1", "AC026746.1", "AC108721.1"]
+      "wm_genes": ["LUC7L2"]
   },
 
   "A4_HarmAnnotation": {
       "leiden_res": 0.3,
-      "celltype_key": ["Subclass_name", "Neighborhood_name", "Class_name", "Group_name"]
+      "celltype_key":  ["cluster"]
   },
 
   "QC1_postsegqc": {
-      "bulkref_path": "/data/erboone/BICANReference/gene_reads_brain_putamen_basal_ganglia.gct"
+      "bulkref_path": "/data/erboone/BICANReference/gene_reads_brain_cortex.gct"
   },
 
   "QC2_postannoqc": {
-    "bulkref_path": "/data/erboone/BICANReference/gene_reads_brain_putamen_basal_ganglia.gct",
-    "genes_of_interest": ["SLC17A6", "CUX2", "AQP4"],
-    "control_genes":  ["MIB1",  "RBM5",  "TAOK1", "PSPC1", "RBM6","PAFAH1B1", "TMCC1", "BRAF","PSMD1", "OPA1", "SENP5","PRKDC", "YME1L1", "UBR2", "CUL5", "GOSR1", "PTCD3", "PIBF1", "CDK13", "COMMD1"],
+    "bulkref_path": "/data/erboone/BICANReference/gene_reads_brain_cortex.gct",
+    "control_genes": ["CUL5", "RBM5", "PAFAH1B1", "RBM6", "PSMD1"],
+    "genes_of_interest": ["CUX2", "AQP4"],
     "spatial_ctkey": "_CELLTYPE",
     "spatial_highlight": {
-      "Oligodendrocyte":"#2eff19",
-      "STR D2 MSN":"#ff192e",
-      "MAT D2 MSN":"#ff7719",
-      "STR D1 MSN":"#192eff",
-      "MAT D1 MSN":"#19d2ff",
-      "STR Hybrid MSN":"#7719ff"},
-      "masks": "masks/202505311513_20250531M200BICANRen32_VMSC32010/*"
-  }
-}
+      "EC L2 CUX2 CALB1":"#1f77b4",
+      "EC L5 RORB TLL1":"#d62728",
+      "EC L2 CUX2 LAMA3":"#1f77b4",
+      "EC L2 CUX2 IL1RAPL2":"#1f77b4",
+      "EC L6 THEMIS CDH13":"#aa40fc",
+      "EC L3 PCP4 ADARB2":"#ff7f0e",
+      "EC L6b TLE4 CCN2":"#aa40fc",
+      "EC L2 RELN BCL11B":"#1f77b4",
+      "EC L6 TLE4 SULF1":"#aa40fc",
+      "EC L2 RELN BMPR1B":"#1f77b4",
+      "EC L56 TLE4 NXPH2":"#d62728",
+      "EC L6 THEMIS RGS12":"#aa40fc",
+      "EC L5 RORB TPBG":"#d62728",
+      "EC L5 BCL11B ADRA1A":"#d62728",
+      "EC L2 CUX2 PDGFD":"#1f77b4"},
 
+      "masks": {}
+  }
+
+}
 
 
 
