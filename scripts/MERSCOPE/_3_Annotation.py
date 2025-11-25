@@ -94,8 +94,11 @@ def A4_HarmAnnotation(input, output, hashes, commit):
     merdata = sc.concat(adatas)
     print("Combined adata X min:max", f'{merdata.X.min()}:{merdata.X.max()}')
 
-    ref_h5ad_path = get_ref_path(merdata)
-    print('Using ref path:', ref_h5ad_path)
+    try:
+        ref_h5ad_path = get_ref_path(merdata)
+        print('Using ref path:', ref_h5ad_path)
+    except AttributeError:
+        ref_h5ad_path = [os.environ['BACKDOOR_REFPATH']]
 
     # Reference data
     #TODO: Pull this into a function

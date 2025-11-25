@@ -27,7 +27,7 @@
 
   "A4_HarmAnnotation": {
       "leiden_res": 0.3,
-      "celltype_key":  ["cluster"]
+      "celltype_key":  ["_CELLTYPE"]
   },
 
   "QC1_postsegqc": {

@@ -37,9 +37,10 @@ def _1_Merquaco(name,
         commit,):
     pass
 
-def cardioids(code):
+def cardioids(code, refpath):
     BASE = '/data/erboone/cardioids'
     CODE = code
+    os.environ['BACKDOOR_REFPATH'] = refpath
     _3_.A4_HarmAnnotation([f'{BASE}/{CODE}.h5ad'], f'{BASE}/{CODE}.ann.h5ad', None, None)
     _3_.QC_2_postanno(f'{BASE}/{CODE}.ann.h5ad', f"{BASE}/_output/{CODE}/stats.csv", None, None)
 
@@ -131,7 +132,8 @@ if __name__ == '__main__':
     # read_ref_table('Pu')
     # _2_.C2_Preprocessing("/home/erboone/pipeline/_output/C2_Preproc/C2.checkpoint", None, None, None)
     # _2_.QC_1_postsegqc()
-    cardioids()
+    cardioids('R201', '/data/erboone/cardioids/cardiods.reference.san.h5ad')
+
 
     
 
