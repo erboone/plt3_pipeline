@@ -10,7 +10,7 @@ import os
 from glob import glob
 
 # from scripts import _1_
-# import scripts.MERSCOPE._1_Segmentation as _1_ 
+import scripts.MERSCOPE._1_Segmentation as _1_ 
 import scripts.MERSCOPE._2_Preproc as _2_
 import scripts.MERSCOPE._3_Annotation as _3_
 
@@ -78,14 +78,15 @@ if __name__ == '__main__':
     # res = select('Experiment', where="Experiment.name == '202502281312_20250228M189BICANRen24_VMSC32110'")
 
     # res = res.pop()
-    # _1_.A1_Cellpose(res.name, 0, 'thisWorks.txt', 0, 0, 0)
+    # _1_.A1_Cellpose('202602061204_20260206M265BICANRen70_VMSC32110', 0, 'thisWorks.txt', 0, 0, 0)
+
 
     # _A1_._2_SaveRawScanpy(res.name, 0, output='test', hashes={'A11_Cellpose':'test_hash'},commit='test_commit')
     # _A2_._1_HarmAnnotation(["/home/erboone/pipeline/_output/A1_Segmentation/T001_a436536e.h5ad"], 'test)
     # a = MerscopeExperiment(res.rootdir, res.name).create_scanpy_object()
     # print(a.X.dtype)
 
-    # _2_.B1_SaveRawScanpy('202505311513_20250531M200BICANRen32_VMSC32010', None, '/home/erboone/pipeline/_output/B2_Preproc/Ren32.h5ad', None, '5')
+    _2_.B1_SaveRawScanpy('202505311513_20250531M200BICANRen32_VMSC32010', None, '/home/erboone/pipeline/_output/B2_Preproc/Ren32.h5ad', None, '5')
     #_2_.B2_Preprocessing(#'/home/erboone/pipeline/_output/A1_Segmentation/T001_0558562c.h5ad'
     #     res.name, '/home/erboone/pipeline/_output/B2_Preproc/T001.h5ad', '/home/erboone/pipeline/_output/B2_Preproc/T001.filt.h5ad', None, None)
     
@@ -132,7 +133,13 @@ if __name__ == '__main__':
     # read_ref_table('Pu')
     # _2_.C2_Preprocessing("/home/erboone/pipeline/_output/C2_Preproc/C2.checkpoint", None, None, None)
     # _2_.QC_1_postsegqc()
-    cardioids('R201', '/data/erboone/cardioids/cardiods.reference.san.h5ad')
+    # cardioids('R201', '/data/erboone/cardioids/cardiods.reference.san.h5ad')
+    # _3_.A4_HarmAnnotation(
+    #     ["/home/erboone/pipeline/_output/B2_Preproc/Ren67.3edc05cc.filt.h5ad"],
+    #     'temp',
+    #     '10101010',
+    #     '123123123123123123'
+    # )
 
 
     

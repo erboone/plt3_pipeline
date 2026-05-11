@@ -379,6 +379,8 @@ rule A1:
     output:
         A1_target,
     threads: 64
+    resources:
+        gpus=1
     run:
         name = ids[wildcards.exp_id]
         print("NAME HERE", name, "Output", output)

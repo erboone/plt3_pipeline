@@ -62,11 +62,11 @@ def A1_Cellpose(
 
     # Script params
     ZSLICE = int(cpconf['z_slice'])
-    CHANNEL = cpconf['channel'].split(',')
+    CHANNEL = cpconf['channel']
     MODEL= ""
     MODEL_PATH = '/home/eboone/CellSegmentation/cp_models/CP_20240227_000004_staged'
     ALT_SAVE = cpconf['alt_path']
-    TEST_FOVS = list(map(int, cpconf.get('test_fovs').split(',')))
+    TEST_FOVS = list(map(int, cpconf.get('test_fovs')))
 
     # Path assembly TODO: remove this when we can trust MERBOT to generate these for
     # image_dataset_path = f"{MERSCOPE_DIR}/{MER_RAWDATA_DIR}/{EXPERIMENT_NAME}/" # Used to load imageset
@@ -96,7 +96,7 @@ def A1_Cellpose(
     result = select('Experiment', where=f"Experiment.name == '{EXPERIMENT_NAME}'")
 
     if len(result) != 1:
-        warnings.warn('Experiment search critera did not find unique entry.') 
+        warnings.warn('Experiment search critera did not find unique entry.')
 
 
     
@@ -108,7 +108,8 @@ def A1_Cellpose(
     experiment = MerscopeExperiment(result[0].root.path, EXPERIMENT_NAME, 
                 alt_paths=alt_paths,
                 seg_kwargs={
-                    'zslice': ZSLICE, 
+                    # 'zslice': ZSLICE, 
+                    'zslice': None,
                     'channel': CHANNEL},
                 img_kwargs={}
             )

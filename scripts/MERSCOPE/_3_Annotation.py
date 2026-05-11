@@ -227,15 +227,15 @@ def A4_HarmAnnotation(input, output, hashes, commit):
         traindata = adata[adata.obs[SOURCE_KEY] == "refdata"] 
         
         nn = KNeighborsClassifier(n_jobs=16)
-        nn.fit(traindata.obsm["X_umap"], traindata.obs[CELLTYPE_KEY[0]])
-        pred = nn.predict(newadata.obsm["X_umap"])
+        nn.fit(traindata.obsm[_PCA_HARM], traindata.obs[CELLTYPE_KEY[0]])
+        pred = nn.predict(newadata.obsm[_PCA_HARM])
         newadata.obs[md.CTYPE_KEY] = pred
 
         if len(CELLTYPE_KEY) > 1:
             for key in CELLTYPE_KEY[1:]:
                 nn = KNeighborsClassifier(n_jobs=16)
-                nn.fit(traindata.obsm["X_umap"], traindata.obs[key])
-                pred = nn.predict(newadata.obsm["X_umap"])
+                nn.fit(traindata.obsm[_PCA_HARM], traindata.obs[key])
+                pred = nn.predict(newadata.obsm[_PCA_HARM])
                 newadata.obs[key] = pred
         
         regadata.append(newadata)
@@ -340,7 +340,7 @@ def QC_2_postanno(
     # Bulk reference ETL
     bulkref = pd.read_csv(BULKREF_PATH, sep='\t', skiprows=2).reset_index()
     bulkref = bulkref.drop_duplicates(subset='Description')
-    bulkref = bulkref.drop(columns=['id', 'Name']).set_index('Description').mean(axis=1)
+    bulkref = bulkref.drop(columns=['id', 'Name'], errors='ignore').set_index('Description').mean(axis=1)
     # bulkref = bulkref.apply(np.log1p)
     bulkref.name = 'bulkref'
 
@@ -554,7 +554,7 @@ def QC_2_postanno(
         # Gene counts analysis, abs, detection
         plt.style.use('default')
         fig, ax = plt.subplots(1, 1, figsize=(20, 5))
-        gene_ex_data = pd.DataFrame(sub_adata.X.sum(axis=0), index=sub_adata.var_names.astype(str), columns=['counts'])
+        gene_ex_data = pd.DataFrame(sc.get.obs_df(sub_adata, sub_adata.var_names.to_list()).sum(axis=1), index=sub_adata.var_names.astype(str), columns=['counts'])
         gene_ex_data['counts'] = np.log10(gene_ex_data['counts'].values)
         gene_ex_data['cat'] = "non-control"
         gene_ex_data.loc[CONTROL_GENES, 'cat'] = "control"
@@ -745,7 +745,7 @@ def QC_2_postanno(
     # Gene counts analysis, abs, detection
     plt.style.use('default')
     fig, ax = plt.subplots(1, 1, figsize=(20, 5))
-    gene_ex_data = pd.DataFrame(sub_adata.X.sum(axis=0), index=sub_adata.var_names.astype(str), columns=['counts'])
+    gene_ex_data = pd.DataFrame(sub_adata.X.sum(axis=0).T, index=sub_adata.var_names.astype(str), columns=['counts'])
     gene_ex_data['counts'] = np.log10(gene_ex_data['counts'].values)
     gene_ex_data['cat'] = "non-control"
     gene_ex_data.loc[CONTROL_GENES, 'cat'] = "control"

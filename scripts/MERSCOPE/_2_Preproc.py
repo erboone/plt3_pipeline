@@ -111,16 +111,13 @@ def B1_SaveRawScanpy(
         alt_paths = {
             'cellpose': f"{res.rootdir}/*output*/{res.name}/", 
             'masks': f"{res.rootdir}/*output*/{res.name}/"
-        }
-    else:
+        }        
+    if alt_paths and not glob(f"{res.rootdir}/*data*/{res.name}"):
         # This is the only difference between A2 and B1
-        alt_paths = {
-            'cellpose': f"{res.rootdir}/{res.name}/", 
-            'masks': f"{res.rootdir}/{res.name}/",
-            'data': f"/mnt/merfish15/MERSCOPE/*data*/202407221121_20240722M176BICANRen22_VMSC10002/",
-            'settings': f"/mnt/merfish15/MERSCOPE/*data*/202407221121_20240722M176BICANRen22_VMSC10002/settings"
-        }
+        alt_paths['data'] = f"/mnt/merfish15/MERSCOPE/*data*/202407221121_20240722M176BICANRen22_VMSC10002/"
+        alt_paths['settings'] = f"/mnt/merfish15/MERSCOPE/*data*/202407221121_20240722M176BICANRen22_VMSC10002/settings"
 
+    print(alt_paths)
     e = MerscopeExperiment(res.root.path, res.name, alt_paths=alt_paths)
 
     mdata = e.create_scanpy_object()
@@ -311,78 +308,82 @@ def B2_Preprocessing(
     pca_dims = [20] # Dimensionality in which PCA reduces to
     lambda_list = [0.8] # list of lambda parameters
 
-    # banksy_adata = mdata.copy()
-    # nbrs = median_dist_to_nearest_neighbour(banksy_adata, key=coord_keys[2])
-    # banksy_dict = initialize_banksy(
-    #     banksy_adata,
-    #     coord_keys,
-    #     k_geom,
-    #     nbr_weight_decay=nbr_weight_decay,
-    #     max_m=max_m,
-    #     plt_edge_hist=True,
-    #     plt_nbr_weights=True,
-    #     plt_agf_angles=False, # takes long time to plot
-    #     plt_theta=True,
-    # )
-    # banksy_dict, banksy_matrix = generate_banksy_matrix(banksy_adata, banksy_dict, lambda_list, max_m)
-    # pca_umap(banksy_dict,
-    #         pca_dims = pca_dims,
-    #         add_umap = True,
-    #         plt_remaining_var = False,
-    #         )
+    banksy_adata = mdata.copy()
+    nbrs = median_dist_to_nearest_neighbour(banksy_adata, key=coord_keys[2])
+    banksy_dict = initialize_banksy(
+        banksy_adata,
+        coord_keys,
+        k_geom,
+        nbr_weight_decay=nbr_weight_decay,
+        max_m=max_m,
+        plt_edge_hist=True,
+        plt_nbr_weights=True,
+        plt_agf_angles=False, # takes long time to plot
+        plt_theta=True,
+    )
+    banksy_dict, banksy_matrix = generate_banksy_matrix(banksy_adata, banksy_dict, lambda_list, max_m)
+    pca_umap(banksy_dict,
+            pca_dims = pca_dims,
+            add_umap = True,
+            plt_remaining_var = False,
+            )
     
-    # results_df, max_num_labels = run_Leiden_partition(
-    #     banksy_dict,
-    #     resolutions,
-    #     num_nn = 50,
-    #     num_iterations = -1,
-    #     match_labels = True,
-    # )
+    results_df, max_num_labels = run_Leiden_partition(
+        banksy_dict,
+        resolutions,
+        num_nn = 50,
+        num_iterations = -1,
+        match_labels = True,
+    )
 
     
-    # labels = results_df.loc['scaled_gaussian_pc20_nc0.80_r0.20', 'labels']
-    # banksy_adata.obs[BANKSY_KEY] = labels.dense
-    # banksy_adata.obs[BANKSY_KEY] = banksy_adata.obs[BANKSY_KEY].astype('string') + '_banksy'
-    # sc.pp.scale(banksy_adata)
-    # expression = sc.get.obs_df(banksy_adata, keys=banksy_adata.var_names.to_list() + [BANKSY_KEY])
-    # # wm_genes = expression.groupby(by=BANKSY_KEY).mean()[banksy_adata.var_names.intersection(WM_GENES)]
-    # # wm_clust = wm_genes.idxmax().mode()
-    # # banksy_adata.obs.loc[banksy_adata.obs[BANKSY_KEY].isin(wm_clust.values), BANKSY_KEY] = 'white_matter'
+    labels = results_df.loc['scaled_gaussian_pc20_nc0.80_r0.20', 'labels']
+    banksy_adata.obs[BANKSY_KEY] = labels.dense
+    banksy_adata.obs[BANKSY_KEY] = banksy_adata.obs[BANKSY_KEY].astype('string') + '_banksy'
+    sc.pp.scale(banksy_adata)
+    expression = sc.get.obs_df(banksy_adata, keys=banksy_adata.var_names.to_list() + [BANKSY_KEY])
+    # wm_genes = expression.groupby(by=BANKSY_KEY).mean()[banksy_adata.var_names.intersection(WM_GENES)]
+    # wm_clust = wm_genes.idxmax().mode()
+    # banksy_adata.obs.loc[banksy_adata.obs[BANKSY_KEY].isin(wm_clust.values), BANKSY_KEY] = 'white_matter'
     
-    # # wm_markers = banksy_adata.var_names.intersection(WM_GENES)
-    # # wm_genes = expression.groupby(by=BANKSY_KEY).mean()[wm_markers]
-    # # wm_clust = wm_genes.idxmax().mode()
-    # mdata.obs[BANKSY_KEY] = banksy_adata.obs[BANKSY_KEY].astype('category')
-    # # dend = sc.tl.dendrogram(mdata, groupby=BANKSY_KEY, inplace=False)
-    # # wm_ind = int(wm_clust[0].split('_')[0])
-    # # all_wm_clust = [f"{i}_banksy" for i,x in enumerate(dend['correlation_matrix'][wm_ind] > .7) if x]
-    # # print(all_wm_clust)
-    # mdata.obs[BANKSY_KEY] = mdata.obs[BANKSY_KEY]
+    # wm_markers = banksy_adata.var_names.intersection(WM_GENES)
+    # wm_genes = expression.groupby(by=BANKSY_KEY).mean()[wm_markers]
+    # wm_clust = wm_genes.idxmax().mode()
+    mdata.obs[BANKSY_KEY] = banksy_adata.obs[BANKSY_KEY].astype('category')
+    # dend = sc.tl.dendrogram(mdata, groupby=BANKSY_KEY, inplace=False)
+    # wm_ind = int(wm_clust[0].split('_')[0])
+    # all_wm_clust = [f"{i}_banksy" for i,x in enumerate(dend['correlation_matrix'][wm_ind] > .7) if x]
+    # print(all_wm_clust)
+    mdata.obs[BANKSY_KEY] = mdata.obs[BANKSY_KEY]
     # mdata.obs.loc[mdata.obs[BANKSY_KEY].isin(all_wm_clust), BANKSY_KEY] = 'white_matter'
-    # mdata.obs[BANKSY_KEY] = mdata.obs[BANKSY_KEY].cat.remove_unused_categories()    
+    mdata.obs[BANKSY_KEY] = mdata.obs[BANKSY_KEY].cat.remove_unused_categories()    
     mdata.obs[BANKSY_KEY] = pd.Series('placeholder').astype('category')#mdata.obs[BANKSY_KEY].astype('object')
     print(mdata.obs[BANKSY_KEY])
     _nametemp = "{date}_BICAN_4x1-{reg}-Q-{num}-{dev}-{samp}.h5ad"
     for region_str in mdata.obs['region'].unique():
-        subadata = mdata[mdata.obs['region'] == region_str].copy()
-        print(subadata.obs.dtypes)
-        date, _, dev = exp_name.split('_')
-        sample = re.search('[A-Z]{3}[0-9]{4}', exp_name)
-        _region_str = region_str[:sample.span(0)[0]] + region_str[sample.span(0)[1]:]
-        section_code = re.search('[EQ]0[0-9]', _region_str)
-        _region_str = _region_str[:section_code.span(0)[0]] + _region_str[section_code.span(0)[1]:]
-        reg = _region_str
+        try:
+            subadata = mdata[mdata.obs['region'] == region_str].copy()
+            print(subadata.obs.dtypes)
+            date, _, dev = exp_name.split('_')
+            sample = re.search('[A-Z]{3}[0-9]{4}', exp_name)
+            _region_str = region_str[:sample.span(0)[0]] + region_str[sample.span(0)[1]:]
+            section_code = re.search('[EQ]0[0-9]', _region_str)
+            _region_str = _region_str[:section_code.span(0)[0]] + _region_str[section_code.span(0)[1]:]
+            reg = _region_str
 
-        # name = _nametemp.format([
-        #     date,
-        #     reg,
-        #     "".join([char for char in section_code.group(0) if not char.isalpha()]), 
-        #     dev,
-        #     sample.group(0)
-        # ])
-        name = f"{date}_BICAN_4x1-{reg}-Q-{''.join([char for char in section_code.group(0) if not char.isalpha()])}-{dev}-{sample.group(0)}.h5ad"
-        print(name)
-        subadata.write(name)
+            # name = _nametemp.format([
+            #     date,
+            #     reg,
+            #     "".join([char for char in section_code.group(0) if not char.isalpha()]), 
+            #     dev,
+            #     sample.group(0)
+            # ])
+            name = f"{date}_BICAN_4x1-{reg}-Q-{''.join([char for char in section_code.group(0) if not char.isalpha()])}-{dev}-{sample.group(0)}.h5ad"
+            print(name)
+            subadata.write(name)
+        except:
+            print(f'Skipping {region_str}...')
+            continue
 
     mdata.safe_write(Path(str(output)))
 
@@ -563,6 +564,7 @@ def QC_1_postsegqc(
     mdata.X = mdata.layers['counts']
     statistics = []
     regions = list(mdata.obs['region'].cat.categories)
+
     fig, axs = plt.subplots(2, 2, figsize=(8, 8))
     for reg in regions:
         reg_mdata = mdata[(mdata.obs['region'] == reg) & (mdata.obs[BANKSY_KEY] != 'white_matter')].copy()
@@ -631,6 +633,6 @@ def QC_1_postsegqc(
     sc.pl.embedding(mdata, basis='spatial', color=BANKSY_KEY, ax=axs[0][1])
 
 
-    fig.savefig(Path(str(output)).parent / 'QC.png')
+    fig.savefig(Path(str(output)).parent / 'QC.png', dpi=1000)
 
     pd.DataFrame(statistics, columns=['region', 'n_cells', 'median t.p.c.', 'median g.p.c.']).to_csv(Path(str(output)).parent / 'stats.csv')
